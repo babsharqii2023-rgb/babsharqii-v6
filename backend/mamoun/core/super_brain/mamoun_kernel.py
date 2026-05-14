@@ -1,16 +1,17 @@
 """
-Mamoun Kernel v58 — Consciousness loop with event-driven architecture and self-improvement.
+Mamoun Kernel v59 — Consciousness loop with full self-improvement pipeline.
 
-CRITICAL UPGRADE from v57:
-- v57: Polling-based main loop, no self-improvement cycle
-- v58: Event-driven scheduling with NeuralBus integration
-- Periodic self-assessment and improvement cycle
-- Meta-cognition persistence (auto-save)
-- Better heartbeat monitoring with real health checks
-- Self-improvement: periodically triggers ImprovementProposer
-- Fixed NeuralBus import paths
+CRITICAL UPGRADE from v58:
+- v58: Proposer→Modifier not wired, no Evolution Loop integration
+- v59: Proposer↔SelfModifier bidirectional wiring confirmed
+- Added EvolutionLoopV2 with safety limits and rollback
+- Added ResearchToUpdatePipeline (DeepResearch→SelfUpdate)
+- Added AgentLifecycleManager (observation→active→retired)
+- Added OutcomeRecorder decorator for consistent measurement
+- Self-improvement cycle now uses EvolutionLoopV2
+- Better stagnation handling with actual proposal application
 
-v58 — Super Mind العقل الخارق مامون
+v59 — Super Mind العقل الخارق مامون
 """
 
 import os
@@ -176,6 +177,7 @@ class MamounKernel:
             llm_client=self._llm_client,
             research_engine=research_engine,
             neural_bus=self._neural_bus,
+            self_modifier=self_modifier,  # v59 FIX: Wire Proposer to SelfModifier
         )
         self._register_component("improvement_proposer", improvement_proposer)
 
@@ -218,6 +220,30 @@ class MamounKernel:
 
         # Wire LLM client to meta-cognition for self-critique
         self._meta_cognition.set_llm_client(self._llm_client)
+
+        # v59 FIX: Ensure Proposer ↔ SelfModifier bidirectional wiring
+        # SelfModifier already has meta_cognition; Proposer now has self_modifier
+        # Also connect research_engine to Proposer for deep research integration
+        improvement_proposer.set_research_engine(research_engine)
+        logger.info("Proposer ↔ SelfModifier wiring confirmed")
+
+        # 15. Evolution Loop V2 — integrated with super_brain
+        from .evolution_loop_v2 import EvolutionLoopV2
+        evolution_loop_v2 = EvolutionLoopV2(kernel=self)
+        self._register_component("evolution_loop_v2", evolution_loop_v2)
+
+        # 16. Research to Update Pipeline — closes the self-update loop
+        from .research_to_update_pipeline import ResearchToUpdatePipeline
+        research_to_update = ResearchToUpdatePipeline(kernel=self)
+        self._register_component("research_to_update_pipeline", research_to_update)
+
+        # 17. Agent Lifecycle Manager — full agent lifecycle
+        from .agent_lifecycle_manager import AgentLifecycleManager
+        agent_lifecycle = AgentLifecycleManager(
+            meta_cognition=self._meta_cognition,
+            neural_bus=self._neural_bus,
+        )
+        self._register_component("agent_lifecycle_manager", agent_lifecycle)
 
         # Subscribe to NeuralBus events
         if self._neural_bus:
@@ -291,7 +317,22 @@ class MamounKernel:
 
     # ── Self-Improvement Cycle ───────────────────────────────────────────
     async def _run_self_improvement(self) -> None:
-        """Run periodic self-improvement cycle."""
+        """Run periodic self-improvement cycle using Evolution Loop V2."""
+        # Prefer Evolution Loop V2 if available
+        evolution_loop = self.get_component("evolution_loop_v2")
+        if evolution_loop:
+            try:
+                result = await evolution_loop.run_cycle()
+                if result.proposals_generated > 0:
+                    logger.info(
+                        f"Evolution V2 cycle: {result.proposals_generated} proposals, "
+                        f"{result.proposals_applied} applied, improvement={result.improvement:.4f}"
+                    )
+                return
+            except Exception as e:
+                logger.error(f"Evolution Loop V2 failed, falling back: {e}")
+
+        # Fallback to direct ImprovementProposer
         proposer = self.get_component("improvement_proposer")
         if not proposer:
             return
