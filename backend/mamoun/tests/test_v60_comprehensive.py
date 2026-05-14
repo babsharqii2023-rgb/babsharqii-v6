@@ -69,23 +69,25 @@ async def test_meta_cognition():
         record_test("unit", "meta_cognition_basic", False, str(e))
 
     try:
+        import tempfile
         from mamoun.core.super_brain.meta_cognition_engine import MetaCognitionEngine, OutcomeRecord
-        mc = MetaCognitionEngine()
-        # تسجيل عدة outcomes
-        for i in range(10):
-            mc.record_outcome(OutcomeRecord(
-                component="test_comp_2",
-                operation=f"op_{i}",
-                success=(i % 3 != 0),
-                quality_score=0.5 + (i % 3) * 0.15,
-                predicted_quality=0.5,
-                latency_ms=50 + i * 10,
-            ))
-        profile = mc.get_profile("test_comp_2")
-        assert profile is not None
-        assert profile.total_operations == 10
-        # تحقق من reliability
-        assert 0 <= profile.reliability_score <= 1.0
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mc = MetaCognitionEngine(persistence_dir=tmpdir)
+            # تسجيل عدة outcomes
+            for i in range(10):
+                mc.record_outcome(OutcomeRecord(
+                    component="test_comp_2",
+                    operation=f"op_{i}",
+                    success=(i % 3 != 0),
+                    quality_score=0.5 + (i % 3) * 0.15,
+                    predicted_quality=0.5,
+                    latency_ms=50 + i * 10,
+                ))
+            profile = mc.get_profile("test_comp_2")
+            assert profile is not None
+            assert profile.total_operations == 10
+            # تحقق من reliability
+            assert 0 <= profile.reliability_score <= 1.0
         record_test("unit", "meta_cognition_reliability", True)
     except Exception as e:
         record_test("unit", "meta_cognition_reliability", False, str(e))

@@ -537,7 +537,7 @@ Top errors: {dict(list(profile.error_types.items())[:5])}"""
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
 
-            if data.get("version") != "v58":
+            if data.get("version") not in ("v58", "v59", "v59.1"):
                 logger.warning("Loading data from different version — may need migration")
 
             for name, pdata in data.get("profiles", {}).items():

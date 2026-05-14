@@ -1,16 +1,21 @@
 """
-Mamoun Kernel v59.1 — Consciousness loop with full self-improvement pipeline.
+Mamoun Kernel v60 — Consciousness loop with full self-improvement pipeline.
 
-CRITICAL UPGRADE from v59:
-- v59: Proposer↔SelfModifier wiring confirmed, EvolutionLoopV2 added
+CRITICAL UPGRADE from v59.1:
+- v60: VariantArchive integrated into kernel (DGM-inspired)
+- v60: NotificationEngine wired to NeuralBus events
+- v60: HealthDashboard shows real-time system health
+- v60: HealthMonitor v61 provides comprehensive monitoring
+- v60: FullSelfRewriter ↔ ImprovementProposer wiring confirmed
+- v60: 21+ components registered and wired
+
+Previous upgrades preserved:
 - v59.1: SelfHealingBridge connects SelfHealing ↔ MetaCognition
 - v59.1: RLHFBridge connects ExperientialRLHF ↔ ImprovementProposer
-- v59.1: OutcomeRecorder decorator applied to all 17+ components
-- v59.1: Kernel upgrade path — version consistency fixed
-- Better healing with simulation steps before execution
-- RLHF patterns (rejection spiral, correction loop) → auto-proposals
+- v59.1: OutcomeRecorder decorator applied to all components
+- v59: Proposer↔SelfModifier wiring confirmed, EvolutionLoopV2 added
 
-v59.1 — Super Mind العقل الخارق مامون
+v60 — Super Mind العقل الخارق مامون
 """
 
 import os
@@ -92,7 +97,7 @@ class MamounKernel:
 
     async def initialize(self) -> None:
         """Initialize all components with proper wiring."""
-        logger.info("Initializing Mamoun Kernel v59.1...")
+        logger.info("Initializing Mamoun Kernel v60...")
 
         # 1. Neural Bus
         try:
@@ -265,6 +270,49 @@ class MamounKernel:
         # v59.1: Wire SelfHealingBridge to handle health events
         healing_bridge.set_self_healing_engine(self.get_component("self_modifier"))
 
+        # 20. VariantArchive — DGM-inspired code variant archive (v59.2/v60)
+        from .variant_archive import VariantArchive
+        variant_archive = VariantArchive(
+            meta_cognition=self._meta_cognition,
+            neural_bus=self._neural_bus,
+        )
+        self._register_component("variant_archive", variant_archive)
+
+        # 21. NotificationEngine — NeuralBus-powered alerts (v59.2/v60)
+        from .notification_engine import NotificationEngine
+        notification_engine = NotificationEngine(
+            neural_bus=self._neural_bus,
+            meta_cognition=self._meta_cognition,
+        )
+        self._register_component("notification_engine", notification_engine)
+        # Wire NotificationEngine to NeuralBus events
+        notification_engine.set_neural_bus(self._neural_bus)
+
+        # 22. HealthDashboard — health visualization (v60)
+        from .health_dashboard import HealthDashboard
+        health_dashboard = HealthDashboard(
+            meta_cognition=self._meta_cognition,
+            kernel=self,
+            notification_engine=notification_engine,
+        )
+        self._register_component("health_dashboard", health_dashboard)
+
+        # 23. HealthMonitor — comprehensive health monitoring (v61 component, v60 kernel)
+        from .health_monitor import HealthMonitor
+        health_monitor = HealthMonitor(
+            meta_cognition=self._meta_cognition,
+            kernel=self,
+            notification_engine=notification_engine,
+            neural_bus=self._neural_bus,
+            healing_bridge=healing_bridge,
+        )
+        self._register_component("health_monitor", health_monitor)
+
+        # v60: Wire FullSelfRewriter to ImprovementProposer
+        if self_rewriter and improvement_proposer:
+            improvement_proposer.set_self_modifier(self_modifier)
+            logger.info("FullSelfRewriter ↔ ImprovementProposer wiring confirmed")
+
         # Subscribe to NeuralBus events
         if self._neural_bus:
             try:
@@ -272,14 +320,14 @@ class MamounKernel:
             except ImportError:
                 from shared.neural_bus import EventType
             self._neural_bus.subscribe(EventType.META_STAGNATION.value, self._handle_stagnation)
-            self._neural_bus.subscribe(EventType.HEALTHING_CHECK.value if hasattr(EventType, 'HEALTHING_CHECK') else "healing.check", self._handle_healing)
+            self._neural_bus.subscribe(EventType.HEALING_CHECK.value, self._handle_healing)
             # v59.1: Subscribe to health critical events
             if hasattr(EventType, 'HEALTH_CRITICAL'):
                 self._neural_bus.subscribe(EventType.HEALTH_CRITICAL.value, self._handle_health_critical)
 
         self._state = KernelState.RUNNING
         self._start_time = time.time()
-        logger.info(f"Mamoun Kernel v59.1 initialized with {len(self._components)} components")
+        logger.info(f"Mamoun Kernel v60 initialized with {len(self._components)} components")
 
     def _register_component(self, name: str, instance: Any) -> None:
         self._components[name] = ComponentHandle(
@@ -403,7 +451,7 @@ class MamounKernel:
             logger.error(f"Cannot run kernel in state: {self._state}")
             return
 
-        logger.info("Mamoun Kernel v59.1 main loop started")
+        logger.info("Mamoun Kernel v60 main loop started")
 
         while self._state == KernelState.RUNNING:
             try:
@@ -525,7 +573,7 @@ class MamounKernel:
             llm_health = self._llm_client.get_health_report()
 
         return {
-            "version": "v59.1",
+            "version": "v60",
             "state": self._state.value,
             "uptime_seconds": uptime,
             "loop_count": self._loop_count,
@@ -545,7 +593,7 @@ class MamounKernel:
     def get_self_assessment(self) -> dict:
         """Get honest self-assessment."""
         assessment = {
-            "version": "v59.1",
+            "version": "v60",
             "kernel_state": self._state.value,
             "components_available": list(self._components.keys()),
         }

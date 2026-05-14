@@ -178,8 +178,8 @@ class HealthDashboard:
                     card.quality_trend = profile.quality_trend
                     card.total_operations = profile.total_operations
                     card.consecutive_failures = profile.consecutive_failures
-                    card.avg_latency_ms = profile.avg_latency_ms
-                    card.last_operation_time = profile.last_operation_time
+                    card.avg_latency_ms = profile.latency_average
+                    card.last_operation_time = profile.last_operation_time if profile.last_operation_time else 0.0
                 else:
                     # لا بيانات — المكون لم يعمل بعد
                     card.reliability_score = 0.5

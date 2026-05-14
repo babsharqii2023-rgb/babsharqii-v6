@@ -258,7 +258,7 @@ class HealthMonitor:
             score.total_operations = profile.total_operations
 
             # حساب staleness
-            if profile.last_operation_time > 0:
+            if profile.last_operation_time and profile.last_operation_time > 0:
                 score.staleness = time.time() - profile.last_operation_time
             else:
                 score.staleness = float('inf')
