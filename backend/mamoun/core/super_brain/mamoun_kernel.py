@@ -1,25 +1,23 @@
 """
-Mamoun Kernel v61 — Consciousness loop with full self-improvement pipeline.
+Mamoun Kernel v62 — Full integration of dynamic tool loading, deployment, smart approval, and agent updating.
 
-CRITICAL UPGRADE from v60:
-- v61: _handle_emergency() — emergency handler freezes EvolutionLoop
-- v61: _check_proactive_health() — proactive health checks in self-assessment cycle
-- v61: HealthMonitor proactive alerts wired to NotificationEngine
-- v61: Emergency escalation with auto-recovery
+CRITICAL UPGRADE from v61:
+- v62: DynamicToolLoader registered — tools can be created AND executed on demand
+- v62: SmartApprovalEngine registered — escalating trust-based auto-approval
+- v62: AutoDeployEngine registered — projects can be deployed, tested, and run
+- v62: DynamicAgentUpdater registered — agents can be updated and hot-reloaded
+- v62: Research-to-Code pipeline closed — research findings flow into actual code changes
+- v62: Gap detection — system can say "I don't have this tool, I'll create it"
+- v62: ProjectScaffolder → AutoDeployEngine pipeline connected
+- v62: 27+ components registered and fully wired
 
 Previous upgrades preserved:
-- v60: VariantArchive integrated into kernel (DGM-inspired)
-- v60: NotificationEngine wired to NeuralBus events
-- v60: HealthDashboard shows real-time system health
-- v60: HealthMonitor v61 provides comprehensive monitoring
-- v60: FullSelfRewriter ↔ ImprovementProposer wiring confirmed
-- v60: 21+ components registered and wired
-- v59.1: SelfHealingBridge connects SelfHealing ↔ MetaCognition
-- v59.1: RLHFBridge connects ExperientialRLHF ↔ ImprovementProposer
-- v59.1: OutcomeRecorder decorator applied to all components
-- v59: Proposer↔SelfModifier wiring confirmed, EvolutionLoopV2 added
+- v61: Emergency handler + proactive health checks
+- v60: VariantArchive + NotificationEngine + HealthDashboard + HealthMonitor
+- v59.1: SelfHealingBridge + RLHFBridge + OutcomeRecorder
+- v59: EvolutionLoopV2 + Proposer↔SelfModifier wiring
 
-v61 — Super Mind العقل الخارق مامون
+v62 — Super Mind العقل الخارق مامون
 """
 
 import os
@@ -311,6 +309,59 @@ class MamounKernel:
             healing_bridge=healing_bridge,
         )
         self._register_component("health_monitor", health_monitor)
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # v62: CRITICAL INTEGRATION — Dynamic tool loading, deployment, approval, agent updating
+        # These components were created in v60 but NOT registered — now fully integrated
+        # ═══════════════════════════════════════════════════════════════════════
+
+        # 24. DynamicToolLoader — loads generated tools/agents as callable functions (v62)
+        from .dynamic_tool_loader import DynamicToolLoader
+        dynamic_tool_loader = DynamicToolLoader(
+            meta_cognition=self._meta_cognition,
+            neural_bus=self._neural_bus,
+            tool_registry=tool_registry,
+            agent_registry=agent_registry,
+            llm_client=self._llm_client,
+        )
+        self._register_component("dynamic_tool_loader", dynamic_tool_loader)
+
+        # Wire ToolCreator → DynamicToolLoader (tools are created then loaded)
+        tool_creator.set_tool_registry(tool_registry)
+        # Store loader reference in tool_creator for auto-loading after creation
+        tool_creator._dynamic_loader = dynamic_tool_loader
+
+        # 25. SmartApprovalEngine — escalating trust-based auto-approval (v62)
+        from .smart_approval_engine import SmartApprovalEngine
+        smart_approval = SmartApprovalEngine(
+            meta_cognition=self._meta_cognition,
+            neural_bus=self._neural_bus,
+        )
+        self._register_component("smart_approval", smart_approval)
+
+        # Wire SmartApproval to SelfModifier for safe auto-approval
+        self_modifier._smart_approval = smart_approval
+
+        # 26. AutoDeployEngine — deploy, test, run projects automatically (v62)
+        from .auto_deploy_engine import AutoDeployEngine
+        auto_deploy = AutoDeployEngine(
+            meta_cognition=self._meta_cognition,
+            neural_bus=self._neural_bus,
+        )
+        self._register_component("auto_deploy_engine", auto_deploy)
+
+        # 27. DynamicAgentUpdater — hot-reload agents and capabilities (v62)
+        from .dynamic_agent_updater import DynamicAgentUpdater
+        dynamic_agent_updater = DynamicAgentUpdater(
+            meta_cognition=self._meta_cognition,
+            neural_bus=self._neural_bus,
+            dynamic_loader=dynamic_tool_loader,
+            smart_approval=smart_approval,
+        )
+        self._register_component("dynamic_agent_updater", dynamic_agent_updater)
+
+        # Wire AgentCreator → DynamicToolLoader (agents are created then loaded)
+        agent_creator._dynamic_loader = dynamic_tool_loader
 
         # v60: Wire FullSelfRewriter to ImprovementProposer
         if self_rewriter and improvement_proposer:

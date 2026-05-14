@@ -113,28 +113,65 @@ class ResearchToUpdatePipeline:
                 latency_ms=(time.time() - start) * 1000,
             )
 
-        # Step 3: Propose improvements based on research
+        # Step 3: Propose improvements based on research — WITH CODE GENERATION (v62 fix)
         proposals_generated = 0
         proposals_applied = 0
 
-        if proposer and meta:
+        if proposer and meta and self._llm_client:
             try:
-                # Trigger improvement proposals — the research context
-                # is already available through the stagnation detection
-                # which was fed by the research findings
-                proposals = await proposer.analyze_and_propose()
-                proposals_generated = len(proposals)
+                # v62 FIX: Generate proposals WITH ACTUAL CODE from research findings
+                # Instead of just calling analyze_and_propose() which uses meta-cognition data,
+                # we now feed research findings directly into code generation
+                for insight in actionable_insights[:5]:  # Top 5 insights
+                    try:
+                        finding = insight["finding"]
+                        insight_type = insight["type"]
+                        confidence = insight["confidence"]
 
-                # Apply proposals if auto_apply is enabled
-                if auto_apply:
-                    for proposal in proposals:
-                        if proposal.status.value == "approved":
-                            try:
-                                result = await proposer.apply_proposal(proposal.id)
+                        # Generate actual code proposal using LLM + research context
+                        code_proposal = await self._generate_code_from_research(
+                            finding, insight_type, research_result
+                        )
+
+                        if code_proposal.get("success"):
+                            # Use SelfModifier to apply the code change
+                            self_modifier = self._get_component("self_modifier")
+                            if self_modifier:
+                                from .self_modifier import ModificationProposal
+                                proposal = ModificationProposal(
+                                    id=f"research_{int(time.time())}_{proposals_generated}",
+                                    target_file=code_proposal.get("target_file", ""),
+                                    original_code=code_proposal.get("original_code", ""),
+                                    proposed_code=code_proposal.get("proposed_code", code_proposal.get("code", "")),
+                                    description=f"Research-based improvement: {finding[:200]}",
+                                    proposer="research_to_update_pipeline",
+                                    risk_level="medium" if confidence > 0.5 else "high",
+                                )
+                                result = await self_modifier.modify(proposal)
+                                proposals_generated += 1
                                 if result.get("success"):
                                     proposals_applied += 1
-                            except Exception as e:
-                                logger.warning(f"Failed to apply proposal {proposal.id}: {e}")
+                                    logger.info(f"Applied research-based code change: {finding[:100]}")
+                    except Exception as e:
+                        logger.warning(f"Failed to generate code from research insight: {e}")
+
+                # Also run the standard improvement proposer for meta-cognition-based improvements
+                try:
+                    proposals = await proposer.analyze_and_propose()
+                    proposals_generated += len(proposals)
+
+                    # Apply proposals if auto_apply is enabled
+                    if auto_apply:
+                        for proposal in proposals:
+                            if proposal.status.value == "approved":
+                                try:
+                                    result = await proposer.apply_proposal(proposal.id)
+                                    if result.get("success"):
+                                        proposals_applied += 1
+                                except Exception as e:
+                                    logger.warning(f"Failed to apply proposal {proposal.id}: {e}")
+                except Exception as e:
+                    logger.error(f"Meta-cognition proposals failed: {e}")
 
             except Exception as e:
                 logger.error(f"Proposal generation failed: {e}")
@@ -231,6 +268,119 @@ class ResearchToUpdatePipeline:
             return "bug_fix"
 
         return "non_actionable"
+
+    async def _generate_code_from_research(self, finding: str, insight_type: str,
+                                            research_result) -> dict:
+        """
+        v62: Generate actual code from research findings.
+        This closes the critical gap where research findings were classified
+        but never turned into executable code changes.
+        """
+        llm_client = self._get_component("llm_client")
+        if not llm_client:
+            return {"success": False, "error": "No LLM client available"}
+
+        try:
+            # Build context from research sources
+            source_context = ""
+            for source in research_result.sources[:3]:
+                if source.content:
+                    source_context += f"\nSource: {source.url}\n{source.content[:500]}\n"
+
+            response = await llm_client.chat_with_fallback(
+                messages=[
+                    {"role": "system", "content": """You are a code improvement engine.
+Based on research findings, generate a SPECIFIC code improvement.
+
+You MUST return a JSON object with these fields:
+{
+    "target_file": "path/to/file.py",
+    "improvement_type": "performance|security|bug_fix|best_practice",
+    "description": "What this improvement does",
+    "proposed_code": "the actual improved code",
+    "original_code_hint": "what the original code probably looks like"
+}
+
+The proposed_code must be COMPLETE, WORKING Python code.
+Focus on the most likely file and specific improvement.
+If you can't determine a specific code change, return success: false."""},
+                    {"role": "user", "content": f"""Research finding: {finding}
+Type: {insight_type}
+
+Research sources:
+{source_context}
+
+Generate a specific code improvement based on this finding."""}
+                ],
+                preferred_order=["deepseek", "gemini", "glm"],
+            )
+
+            if response.success:
+                import json
+                content = response.content.strip()
+                # Strip markdown fences
+                if content.startswith("```"):
+                    lines = content.split("\n")
+                    content = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+
+                # Try to parse as JSON
+                try:
+                    proposal = json.loads(content)
+                    if proposal.get("target_file") and proposal.get("proposed_code"):
+                        return {"success": True, **proposal}
+                except json.JSONDecodeError:
+                    # If not JSON, treat the whole content as proposed code
+                    if len(content) > 50:
+                        return {
+                            "success": True,
+                            "target_file": "",
+                            "proposed_code": content,
+                            "description": finding[:200],
+                        }
+
+            return {"success": False, "error": "LLM did not generate usable code"}
+
+        except Exception as e:
+            logger.error(f"Code generation from research failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def detect_capability_gap(self, task_description: str) -> dict:
+        """
+        v62: Detect if the system lacks a capability and needs to create a tool.
+        
+        This is the key capability: "I don't have this tool, I'll create it."
+        """
+        dynamic_loader = self._get_component("dynamic_tool_loader")
+        tool_creator = self._get_component("tool_creator")
+
+        # Check if we have a tool for this task
+        has_tool = False
+        tool_name = ""
+
+        if dynamic_loader:
+            loaded_tools = dynamic_loader.get_loaded_tools()
+            for tool in loaded_tools:
+                if tool["is_callable"] and any(
+                    kw in task_description.lower()
+                    for kw in tool["name"].lower().split("_")
+                ):
+                    has_tool = True
+                    tool_name = tool["name"]
+                    break
+
+        return {
+            "task": task_description,
+            "has_tool": has_tool,
+            "existing_tool": tool_name,
+            "can_create": tool_creator is not None,
+            "can_load": dynamic_loader is not None,
+            "action": "use_existing" if has_tool else "create_and_load",
+            "message": (
+                f"أملك الأداة '{tool_name}'، سأستخدمها مباشرة"
+                if has_tool
+                else "لا أملك هذه الأداة، سأنشئها وأستخدمها فوراً عبر DynamicToolLoader"
+            ),
+        }
 
     def get_stats(self) -> dict:
         """Get pipeline statistics."""
