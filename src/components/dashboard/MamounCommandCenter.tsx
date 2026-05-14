@@ -21,6 +21,8 @@ import BrainNetwork from '@/components/brain/BrainNetwork';
 import ContextScreen from '@/components/brain/ContextScreen';
 import ThinkingAnimation from '@/components/chat/ThinkingAnimation';
 import ChatCard from '@/components/chat/ChatCard';
+import ConfirmationCard from '@/components/chat/ConfirmationCard';
+import { getAutonomyConfig, requiresConfirmation, type AutonomyConfig } from '@/lib/autonomy';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // الثيم الكوني الموسع — Extended Cosmic Theme
@@ -104,6 +106,15 @@ export default function MamounCommandCenter() {
   const [brainConfidences, setBrainConfidences] = useState<Record<string, number>>({});
   const [screenAnimation, setScreenAnimation] = useState('fadeIn');
   const [screenPropsData, setScreenPropsData] = useState<Record<string, unknown>>({});
+  const [pendingApproval, setPendingApproval] = useState<{
+    action: string;
+    description: string;
+    autonomyConfig: AutonomyConfig;
+    onApprove: () => void;
+    onReject: () => void;
+  } | null>(null);
+  const approvals = useAppStore((s) => s.approvals);
+  const respondApproval = useAppStore((s) => s.respondApproval);
 
   // ─── Refs ─────────────────────────────────────────────────────
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -346,13 +357,41 @@ export default function MamounCommandCenter() {
       );
     }
 
-    // 7. Handle special intents directly
+    // 7. Human-ON-the-Loop: Check if this intent requires confirmation
+    if (requiresConfirmation(route.intent)) {
+      const autonomyConfig = getAutonomyConfig(route.intent);
+      setPendingApproval({
+        action: route.labelAr,
+        description: `أنت على وشك تنفيذ: ${route.labelAr} (${route.labelEn})\nالرسالة: ${text}`,
+        autonomyConfig,
+        onApprove: () => {
+          setPendingApproval(null);
+          executeAfterApproval(text, route);
+        },
+        onReject: () => {
+          setPendingApproval(null);
+          addMessage({
+            id: `reject-${Date.now()}`,
+            role: 'assistant',
+            content: 'تم رفض العملية بناءً على طلبك.',
+            timestamp: Date.now(),
+            confidence: 1,
+          });
+          setThinking(false);
+          setActiveBrains(['neural']);
+        },
+      });
+      brainSound.playEvent('brain.activate', { brainId: 'causal' });
+      return;
+    }
+
+    // 8. Handle special intents directly (no confirmation needed)
     if (route.intent === 'update.pull') {
       handleSelfUpdate();
       return;
     }
 
-    // 8. Call /api/super-mind/chat (with fallback to /api/mamoun-chat)
+    // 9. Call /api/super-mind/chat (with fallback to /api/mamoun-chat)
     try {
       const chatHistory = messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -460,8 +499,108 @@ export default function MamounCommandCenter() {
     inputText, messages, defaultModel, brainConfidences,
     sendMessage, addMessage, setThinking, updateDeliberationData,
     brainSound, setCurrentIntent, setActiveScreen, setScreenProps,
-    handleSelfUpdate,
+    handleSelfUpdate, pendingApproval,
   ]);
+
+  // ─── Execute After Approval (Human-ON-the-Loop) ─────────────
+  const executeAfterApproval = useCallback(async (text: string, route: SuperMindRoute) => {
+    setThinking(true);
+    setActiveBrains(route.activatedBrains);
+
+    // Handle special intents
+    if (route.intent === 'update.pull') {
+      handleSelfUpdate();
+      return;
+    }
+
+    try {
+      const chatHistory = messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .slice(-10)
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      let response: Response;
+      try {
+        response = await fetch('/api/super-mind/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            model: defaultModel,
+            intent: route.intent,
+            activated_brains: route.activatedBrains,
+            context: {},
+          }),
+        });
+      } catch {
+        response = await fetch('/api/mamoun-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, model: defaultModel, context: {} }),
+        });
+      }
+
+      if (response.ok) {
+        const data = await response.json();
+        addMessage({
+          id: data.id || `resp-${Date.now()}`,
+          role: 'assistant',
+          content: data.content || 'لم أتمكن من معالجة طلبك.',
+          timestamp: Date.now(),
+          brain: data.brain || data.winning_brain,
+          confidence: data.confidence,
+          isRealDeliberation: !!(data.brain_responses || data.consensus_level),
+          metadata: {
+            ...data.metadata,
+            brain_responses: data.brain_responses,
+            consensus_level: data.consensus_level,
+            source: data.source,
+            intent: route.intent,
+            approved: true,
+          },
+        });
+
+        if (data.brain_responses || data.consensus_level !== undefined) {
+          updateDeliberationData({
+            brainResponses: data.brain_responses,
+            consensusLevel: data.consensus_level,
+            cjs: data.cjs,
+            conflictDetected: data.conflict_detected,
+            mirrorReflection: data.mirror_reflection,
+            queryType: data.query_type,
+            winner: data.brain || data.winning_brain,
+          });
+        }
+
+        if (route.screenComponent && data) {
+          setScreenPropsData(prev => ({ ...prev, responseData: data }));
+          setScreenProps({ intent: route.intent, message: text, responseData: data });
+        }
+
+        brainSound.playEvent('operation.complete');
+      } else {
+        addMessage({
+          id: `err-${Date.now()}`,
+          role: 'assistant',
+          content: 'عذراً، حدث خطأ في الاتصال.',
+          timestamp: Date.now(),
+          confidence: 0.1,
+        });
+        brainSound.playEvent('operation.error');
+      }
+    } catch {
+      addMessage({
+        id: `err-${Date.now()}`,
+        role: 'assistant',
+        content: 'عذراً، لم أتمكن من الاتصال بالخادم.',
+        timestamp: Date.now(),
+        confidence: 0.1,
+      });
+      brainSound.playEvent('operation.error');
+    }
+    setThinking(false);
+    setActiveBrains(['neural']);
+  }, [messages, defaultModel, addMessage, setThinking, updateDeliberationData, brainSound, setScreenProps, handleSelfUpdate]);
 
   // ─── Handle Key Down ─────────────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -652,13 +791,64 @@ export default function MamounCommandCenter() {
 
             {/* Thinking Animation */}
             <AnimatePresence>
-              {isThinking && (
+              {isThinking && !pendingApproval && (
                 <ThinkingAnimation
                   activeBrains={activeBrains}
                   tick={tick}
                 />
               )}
             </AnimatePresence>
+
+            {/* Human-ON-the-Loop Approval Card */}
+            <AnimatePresence>
+              {pendingApproval && (
+                <ConfirmationCard
+                  action={pendingApproval.action}
+                  description={pendingApproval.description}
+                  autonomyConfig={pendingApproval.autonomyConfig}
+                  onApprove={pendingApproval.onApprove}
+                  onReject={pendingApproval.onReject}
+                />
+              )}
+            </AnimatePresence>
+
+            {/* Pending Approvals from Store */}
+            {approvals.filter(a => a.status === 'pending').map(approval => (
+              <div key={approval.id} style={{
+                background: 'rgba(255,152,0,0.08)',
+                border: '1px solid rgba(255,152,0,0.3)',
+                borderRadius: 12, padding: '10px 14px',
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#FF9800', marginBottom: 4 }}>
+                  ⏳ {approval.title}
+                </div>
+                <div style={{ fontSize: 10, color: '#5a6a80', marginBottom: 8 }}>
+                  {approval.description}
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={() => respondApproval(approval.id, 'approved')}
+                    style={{
+                      background: 'rgba(76,175,80,0.15)', color: '#4CAF50',
+                      border: '1px solid rgba(76,175,80,0.3)', borderRadius: 6,
+                      padding: '3px 10px', fontSize: 9, cursor: 'pointer', fontWeight: 600,
+                    }}
+                  >
+                    ✅ تأكيد
+                  </button>
+                  <button
+                    onClick={() => respondApproval(approval.id, 'rejected')}
+                    style={{
+                      background: 'rgba(239,68,68,0.15)', color: '#EF4444',
+                      border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6,
+                      padding: '3px 10px', fontSize: 9, cursor: 'pointer', fontWeight: 600,
+                    }}
+                  >
+                    ❌ رفض
+                  </button>
+                </div>
+              </div>
+            ))}
 
             <div ref={messagesEndRef} />
           </div>

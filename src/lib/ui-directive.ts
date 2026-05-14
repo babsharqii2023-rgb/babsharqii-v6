@@ -124,10 +124,14 @@ export function generateUIDirective(intent: string, data: Record<string, any>): 
         component: 'DefaultScreen',
         layout: 'split',
         sections: [
-          { type: 'MetricCard', props: { title: 'مستوى المخاطر', value: 'عالي', icon: 'warning', color: '#EF4444' }, span: 12 },
-          { type: 'CodeBlock', props: { title: 'التعديل المقترح', content: data.proposed_change || '// التعديل المقترح', language: 'python' }, span: 12, actions: [
-            { trigger: 'confirm', intentId: 'self.modify', label: 'تأكيد التنفيذ' }
-          ]},
+          { type: 'MetricCard', props: { title: 'مستوى المخاطر', value: 'عالي', icon: 'warning', color: '#EF4444' }, span: 6 },
+          { type: 'StatusBadge', props: { status: data.status || 'proposed', size: 'lg' }, span: 6 },
+          { type: 'CodeBlock', props: { title: 'التعديل المقترح', content: data.proposed_change || '// التعديل المقترح', language: 'python' }, span: 12 },
+          { type: 'ActionButtons', props: { buttons: [
+            { label: 'تأكيد التنفيذ', intentId: 'self.modify', variant: 'approve' as const },
+            { label: 'رفض', intentId: 'self.modify', variant: 'reject' as const },
+            { label: 'تعديل', intentId: 'self.modify', variant: 'modify' as const },
+          ] }, span: 12 },
         ],
       };
 

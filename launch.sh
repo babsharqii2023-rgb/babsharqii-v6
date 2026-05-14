@@ -1,363 +1,236 @@
 #!/bin/bash
-# ═══════════════════════════════════════════════════════════════════════════
-# مأمون v62 — العقل الخارق — ملف التشغيل الشامل
-# Mamoun v62 — Super Mind — Complete Launch Script
-# ═══════════════════════════════════════════════════════════════════════════
-#
-# الاستخدام:
-#   chmod +x launch.sh
-#   ./launch.sh              # تشغيل كامل (باك إند + فرونت إند)
-#   ./launch.sh backend      # تشغيل الباك إند فقط
-#   ./launch.sh frontend     # تشغيل الفرونت إند فقط
-#   ./launch.sh check        # فحص المتطلبات فقط
-#   ./launch.sh install      # تثبيت المتطلبات فقط
-#   ./launch.sh build        # بناء الفرونت إند للإنتاج
-#   ./launch.sh production   # تشغيل في وضع الإنتاج
-#
-# المتطلبات:
-#   - Python 3.11+
-#   - Node.js 20+
-#   - pip, npm
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+# العقل الخارق — SuperMind Launch Script
+# مأمون v62 — Launches both Frontend (Next.js) and Backend (FastAPI)
+# ═══════════════════════════════════════════════════════════════════
 
 set -e
 
-# ── Colors ────────────────────────────────────────────────────────────────
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# ── Configuration ─────────────────────────────────────────────────────────
-BACKEND_PORT=8000
-FRONTEND_PORT=3000
-BACKEND_DIR="$(cd "$(dirname "$0")" && pwd)/backend"
-FRONTEND_DIR="$(cd "$(dirname "$0")" && pwd)"
-PID_DIR="/tmp/mamoun-pids"
-LOG_DIR="$(cd "$(dirname "$0")" && pwd)/logs"
+echo ""
+echo -e "${CYAN}═══════════════════════════════════════════════════════════════════${NC}"
+echo -e "${CYAN}  العقل الخارق — SuperMind Launcher${NC}"
+echo -e "${CYAN}  مأمون v62 — Multi-Brain AI System${NC}"
+echo -e "${CYAN}═══════════════════════════════════════════════════════════════════${NC}"
+echo ""
 
-# ── Helper Functions ──────────────────────────────────────────────────────
-log_info()    { echo -e "${GREEN}[INFO]${NC} $1"; }
-log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
-log_step()    { echo -e "${CYAN}[STEP]${NC} $1"; }
-log_mamoun()  { echo -e "${PURPLE}[مأمون]${NC} $1"; }
+# ─── Configuration ─────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# ── Create directories ────────────────────────────────────────────────────
-mkdir -p "$PID_DIR" "$LOG_DIR"
+FRONTEND_PORT=${FRONTEND_PORT:-3000}
+BACKEND_PORT=${BACKEND_PORT:-8000}
+BACKEND_HOST=${BACKEND_HOST:-0.0.0.0}
 
-# ── Check Requirements ────────────────────────────────────────────────────
-check_requirements() {
-    log_step "فحص المتطلبات..."
-    
-    local all_ok=true
-    
-    # Check Python
-    if command -v python3 &> /dev/null; then
-        PY_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
-        log_info "Python: $PY_VERSION ✓"
+# ─── Check .env ───────────────────────────────────────────────
+check_env() {
+    echo -e "${BLUE}[1/5] Checking environment...${NC}"
+
+    if [ ! -f ".env" ]; then
+        echo -e "${YELLOW}  ⚠ No .env file found${NC}"
+        echo -e "${YELLOW}  Creating .env from .env.example (if exists)...${NC}"
+        if [ -f ".env.example" ]; then
+            cp .env.example .env
+            echo -e "${GREEN}  ✓ .env created from .env.example${NC}"
+        else
+            # Create minimal .env
+            cat > .env << 'EOF'
+# SuperMind v62 — Environment Configuration
+# Add your API keys below:
+
+# GLM API Key (ZhipuAI) — Required for Neural & Symbolic Brains
+GLM_API_KEY=
+
+# DeepSeek API Key — Required for Causal & World Model Brains
+DEEPSEEK_API_KEY=
+
+# Google Gemini API Key — Required for Bayesian Brain
+GEMINI_API_KEY=
+
+# Z-AI API Key — Fallback provider
+ZAI_API_KEY=
+
+# Backend URL (used by Next.js BFF layer)
+MAMOUN_BACKEND_URL=http://localhost:8000
+
+# Frontend URL
+FRONTEND_URL=http://localhost:3000
+EOF
+            echo -e "${GREEN}  ✓ Minimal .env created${NC}"
+        fi
+        echo -e "${YELLOW}  ⚠ Please edit .env and add your API keys before running!${NC}"
     else
-        log_error "Python 3 غير مثبت!"
-        all_ok=false
+        echo -e "${GREEN}  ✓ .env file found${NC}"
     fi
-    
+}
+
+# ─── Install Dependencies ─────────────────────────────────────
+install_deps() {
+    echo -e "${BLUE}[2/5] Checking dependencies...${NC}"
+
     # Check Node.js
-    if command -v node &> /dev/null; then
-        NODE_VERSION=$(node --version 2>&1)
-        log_info "Node.js: $NODE_VERSION ✓"
-    else
-        log_error "Node.js غير مثبت!"
-        all_ok=false
+    if ! command -v node &> /dev/null; then
+        echo -e "${RED}  ✗ Node.js not found! Please install Node.js 18+${NC}"
+        exit 1
     fi
-    
-    # Check npm
-    if command -v npm &> /dev/null; then
-        NPM_VERSION=$(npm --version 2>&1)
-        log_info "npm: v$NPM_VERSION ✓"
-    else
-        log_error "npm غير مثبت!"
-        all_ok=false
+    echo -e "${GREEN}  ✓ Node.js $(node --version)${NC}"
+
+    # Check Python
+    if ! command -v python3 &> /dev/null; then
+        echo -e "${RED}  ✗ Python3 not found! Please install Python 3.10+${NC}"
+        exit 1
     fi
-    
-    # Check pip
-    if python3 -m pip --version &> /dev/null; then
-        log_info "pip: متوفر ✓"
+    echo -e "${GREEN}  ✓ Python $(python3 --version)${NC}"
+
+    # Install frontend dependencies
+    if [ ! -d "node_modules" ]; then
+        echo -e "${YELLOW}  Installing frontend dependencies...${NC}"
+        npm install
+        echo -e "${GREEN}  ✓ Frontend dependencies installed${NC}"
     else
-        log_warn "pip قد لا يكون متوفراً"
+        echo -e "${GREEN}  ✓ Frontend node_modules exists${NC}"
     fi
-    
-    # Check .env file
-    if [ -f ".env" ]; then
-        log_info "ملف .env: موجود ✓"
-    else
-        log_warn "ملف .env غير موجود — يمكن إنشاؤه لاحقاً"
-    fi
-    
-    # Check backend requirements.txt
-    if [ -f "$BACKEND_DIR/requirements.txt" ]; then
-        log_info "Backend requirements.txt: موجود ✓"
-    else
-        log_warn "Backend requirements.txt غير موجود"
-    fi
-    
-    # Check package.json
-    if [ -f "package.json" ]; then
-        log_info "package.json: موجود ✓"
-    else
-        log_error "package.json غير موجود!"
-        all_ok=false
-    fi
-    
-    if [ "$all_ok" = true ]; then
-        log_info "جميع المتطلبات متوفرة ✓"
-        return 0
-    else
-        log_error "بعض المتطلبات مفقودة!"
-        return 1
+
+    # Install backend dependencies
+    if [ -f "backend/requirements.txt" ]; then
+        echo -e "${YELLOW}  Checking backend Python dependencies...${NC}"
+        pip3 install -q fastapi uvicorn pydantic pydantic-settings pyyaml python-dotenv httpx 2>/dev/null || true
+        echo -e "${GREEN}  ✓ Backend dependencies checked${NC}"
     fi
 }
 
-# ── Install Dependencies ──────────────────────────────────────────────────
-install_dependencies() {
-    log_step "تثبيت المتطلبات..."
-    
-    # Install Python dependencies
-    if [ -f "$BACKEND_DIR/requirements.txt" ]; then
-        log_mamoun "تثبيت متطلبات الباك إند..."
-        pip install -q -r "$BACKEND_DIR/requirements.txt" 2>&1 | tail -3 || log_warn "بعض الحزم قد فشل تثبيتها"
-        log_info "متطلبات الباك إند ✓"
-    fi
-    
-    # Install Node.js dependencies
-    if [ -f "package.json" ]; then
-        log_mamoun "تثبيت متطلبات الفرونت إند..."
-        npm install --silent 2>&1 | tail -3 || log_warn "بعض الحزم قد فشل تثبيتها"
-        log_info "متطلبات الفرونت إند ✓"
-    fi
-    
-    log_info "تم تثبيت جميع المتطلبات ✓"
+# ─── Create Required Directories ──────────────────────────────
+create_dirs() {
+    echo -e "${BLUE}[3/5] Creating required directories...${NC}"
+    mkdir -p backend/data backend/logs backend/sandbox backend/backups
+    echo -e "${GREEN}  ✓ Directories created${NC}"
 }
 
-# ── Start Backend ─────────────────────────────────────────────────────────
-start_backend() {
-    log_step "تشغيل الباك إند على المنفذ $BACKEND_PORT..."
-    
-    cd "$BACKEND_DIR"
-    
-    # Create necessary directories
-    mkdir -p data logs sandbox
-    
-    # Start the backend using the canonical run.py (with full initialization)
-    python3 run.py --host 0.0.0.0 --port $BACKEND_PORT > "$LOG_DIR/backend.log" 2>&1 &
-    BACKEND_PID=$!
-    echo $BACKEND_PID > "$PID_DIR/backend.pid"
-    
-    cd "$FRONTEND_DIR"
-    
-    # Wait for backend to start
-    log_mamoun "انتظار بدء الباك إند..."
-    for i in $(seq 1 30); do
-        if curl -s "http://localhost:$BACKEND_PORT/health" > /dev/null 2>&1; then
-            log_info "الباك إند يعمل على http://localhost:$BACKEND_PORT ✓ (PID: $BACKEND_PID)"
-            return 0
-        fi
-        sleep 1
-    done
-    
-    log_warn "الباك إند قد يحتاج وقتاً إضافياً للبدء — تحقق من $LOG_DIR/backend.log"
-    log_info "PID الباك إند: $BACKEND_PID"
-}
-
-# ── Start Frontend ────────────────────────────────────────────────────────
-start_frontend() {
-    log_step "تشغيل الفرونت إند على المنفذ $FRONTEND_PORT..."
-    
-    # Start Next.js dev server
-    npx next dev -p $FRONTEND_PORT > "$LOG_DIR/frontend.log" 2>&1 &
-    FRONTEND_PID=$!
-    echo $FRONTEND_PID > "$PID_DIR/frontend.pid"
-    
-    # Wait for frontend to start
-    log_mamoun "انتظار بدء الفرونت إند..."
-    for i in $(seq 1 30); do
-        if curl -s "http://localhost:$FRONTEND_PORT" > /dev/null 2>&1; then
-            log_info "الفرونت إند يعمل على http://localhost:$FRONTEND_PORT ✓ (PID: $FRONTEND_PID)"
-            return 0
-        fi
-        sleep 1
-    done
-    
-    log_warn "الفرونت إند قد يحتاج وقتاً إضافياً — تحقق من $LOG_DIR/frontend.log"
-    log_info "PID الفرونت إند: $FRONTEND_PID"
-}
-
-# ── Build for Production ──────────────────────────────────────────────────
+# ─── Build Frontend ───────────────────────────────────────────
 build_frontend() {
-    log_step "بناء الفرونت إند للإنتاج..."
-    npm run build
-    log_info "تم البناء بنجاح ✓"
-}
-
-# ── Start Production Mode ─────────────────────────────────────────────────
-start_production() {
-    log_step "تشغيل في وضع الإنتاج..."
-    
-    # Start backend
-    start_backend
-    
-    # Start frontend (production build)
-    log_mamoun "تشغيل الفرونت إند (إنتاج)..."
-    npx next start -p $FRONTEND_PORT > "$LOG_DIR/frontend-prod.log" 2>&1 &
-    FRONTEND_PID=$!
-    echo $FRONTEND_PID > "$PID_DIR/frontend.pid"
-    log_info "الفرونت إند (إنتاج) يعمل على http://localhost:$FRONTEND_PORT ✓"
-}
-
-# ── Stop All ──────────────────────────────────────────────────────────────
-stop_all() {
-    log_step "إيقاف جميع العمليات..."
-    
-    if [ -f "$PID_DIR/backend.pid" ]; then
-        BACKEND_PID=$(cat "$PID_DIR/backend.pid")
-        if kill -0 "$BACKEND_PID" 2>/dev/null; then
-            kill "$BACKEND_PID"
-            log_info "تم إيقاف الباك إند (PID: $BACKEND_PID)"
-        fi
-        rm "$PID_DIR/backend.pid"
-    fi
-    
-    if [ -f "$PID_DIR/frontend.pid" ]; then
-        FRONTEND_PID=$(cat "$PID_DIR/frontend.pid")
-        if kill -0 "$FRONTEND_PID" 2>/dev/null; then
-            kill "$FRONTEND_PID"
-            log_info "تم إيقاف الفرونت إند (PID: $FRONTEND_PID)"
-        fi
-        rm "$PID_DIR/frontend.pid"
-    fi
-    
-    log_info "تم إيقاف جميع العمليات ✓"
-}
-
-# ── Show Status ───────────────────────────────────────────────────────────
-show_status() {
-    log_mamoun "═══ حالة مأمون v62 — العقل الخارق ═══"
-    echo ""
-    
-    # Backend status
-    if [ -f "$PID_DIR/backend.pid" ]; then
-        BACKEND_PID=$(cat "$PID_DIR/backend.pid")
-        if kill -0 "$BACKEND_PID" 2>/dev/null; then
-            log_info "الباك إند: يعمل ✓ (PID: $BACKEND_PID, Port: $BACKEND_PORT)"
-        else
-            log_warn "الباك إند: متوقف"
-        fi
+    echo -e "${BLUE}[4/5] Building frontend...${NC}"
+    if [ ! -d ".next" ]; then
+        echo -e "${YELLOW}  Running next build...${NC}"
+        npx next build
+        echo -e "${GREEN}  ✓ Frontend built${NC}"
     else
-        log_warn "الباك إند: لم يتم تشغيله"
+        echo -e "${GREEN}  ✓ .next build exists (use --rebuild to rebuild)${NC}"
     fi
-    
-    # Frontend status
-    if [ -f "$PID_DIR/frontend.pid" ]; then
-        FRONTEND_PID=$(cat "$PID_DIR/frontend.pid")
-        if kill -0 "$FRONTEND_PID" 2>/dev/null; then
-            log_info "الفرونت إند: يعمل ✓ (PID: $FRONTEND_PID, Port: $FRONTEND_PORT)"
-        else
-            log_warn "الفرونت إند: متوقف"
-        fi
-    else
-        log_warn "الفرونت إند: لم يتم تشغيله"
-    fi
-    
-    echo ""
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────
-clear
-echo -e "${PURPLE}"
-echo "  ╔══════════════════════════════════════════════════════════╗"
-echo "  ║                                                        ║"
-echo "  ║     🧠  مأمون v62 — العقل الخارق  🧠                  ║"
-echo "  ║     Mamoun v62 — Super Mind                            ║"
-echo "  ║                                                        ║"
-echo "  ║     5 Brains • Self-Healing • Self-Modification        ║"
-echo "  ║     Deep Research • Agent Builder • Auto-Deploy         ║"
-echo "  ║                                                        ║"
-echo "  ╚══════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
+# ─── Start Services ───────────────────────────────────────────
+start_services() {
+    echo -e "${BLUE}[5/5] Starting services...${NC}"
+    echo ""
 
-case "${1:-all}" in
-    check)
-        check_requirements
-        ;;
-    install)
-        check_requirements
-        install_dependencies
-        ;;
-    backend)
-        check_requirements
-        start_backend
+    # Check if --frontend-only or --backend-only flags
+    MODE="all"
+    if [ "$1" = "--frontend-only" ] || [ "$1" = "-f" ]; then
+        MODE="frontend"
+    elif [ "$1" = "--backend-only" ] || [ "$1" = "-b" ]; then
+        MODE="backend"
+    elif [ "$1" = "--dev" ] || [ "$1" = "-d" ]; then
+        MODE="dev"
+    elif [ "$1" = "--rebuild" ] || [ "$1" = "-r" ]; then
+        echo -e "${YELLOW}  Rebuilding frontend...${NC}"
+        rm -rf .next
+        npx next build
+        MODE="all"
+    fi
+
+    # Export backend URL for frontend
+    export MAMOUN_BACKEND_URL=http://localhost:${BACKEND_PORT}
+
+    cleanup() {
         echo ""
-        log_mamoun "الباك إند يعمل على http://localhost:$BACKEND_PORT"
-        log_mamoun "الـ API: http://localhost:$BACKEND_PORT/docs"
-        log_mamoun "السجل: $LOG_DIR/backend.log"
-        # Keep script running
-        wait
-        ;;
-    frontend)
-        check_requirements
-        start_frontend
+        echo -e "${YELLOW}  Shutting down services...${NC}"
+        if [ ! -z "$FRONTEND_PID" ]; then
+            kill $FRONTEND_PID 2>/dev/null || true
+        fi
+        if [ ! -z "$BACKEND_PID" ]; then
+            kill $BACKEND_PID 2>/dev/null || true
+        fi
+        echo -e "${GREEN}  ✓ Services stopped${NC}"
+        exit 0
+    }
+    trap cleanup SIGINT SIGTERM
+
+    if [ "$MODE" = "frontend" ] || [ "$MODE" = "all" ] || [ "$MODE" = "dev" ]; then
+        if [ "$MODE" = "dev" ]; then
+            echo -e "${CYAN}  Starting Next.js in DEV mode on port ${FRONTEND_PORT}...${NC}"
+            npx next dev -p $FRONTEND_PORT &
+        else
+            echo -e "${CYAN}  Starting Next.js on port ${FRONTEND_PORT}...${NC}"
+            npx next start -p $FRONTEND_PORT &
+        fi
+        FRONTEND_PID=$!
+        echo -e "${GREEN}  ✓ Frontend started (PID: ${FRONTEND_PID})${NC}"
+        echo -e "${GREEN}  → http://localhost:${FRONTEND_PORT}${NC}"
+    fi
+
+    if [ "$MODE" = "backend" ] || [ "$MODE" = "all" ]; then
+        echo -e "${CYAN}  Starting FastAPI backend on ${BACKEND_HOST}:${BACKEND_PORT}...${NC}"
+        cd backend
+        python3 run.py --host $BACKEND_HOST --port $BACKEND_PORT &
+        BACKEND_PID=$!
+        cd "$SCRIPT_DIR"
+        echo -e "${GREEN}  ✓ Backend started (PID: ${BACKEND_PID})${NC}"
+        echo -e "${GREEN}  → http://localhost:${BACKEND_PORT}/health${NC}"
+        echo -e "${GREEN}  → http://localhost:${BACKEND_PORT}/docs${NC}"
+    fi
+
+    echo ""
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}  🚀 العقل الخارق يعمل!${NC}"
+    echo -e "${GREEN}  🚀 SuperMind is running!${NC}"
+    echo ""
+    if [ "$MODE" != "backend" ]; then
+        echo -e "${GREEN}  Frontend: http://localhost:${FRONTEND_PORT}${NC}"
+    fi
+    if [ "$MODE" != "frontend" ]; then
+        echo -e "${GREEN}  Backend:  http://localhost:${BACKEND_PORT}/docs${NC}"
+    fi
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${YELLOW}  Press Ctrl+C to stop all services${NC}"
+    echo ""
+
+    # Wait for either process to exit
+    wait
+}
+
+# ─── Main ─────────────────────────────────────────────────────
+case "$1" in
+    --help|-h)
+        echo "Usage: ./launch.sh [OPTION]"
         echo ""
-        log_mamoun "الفرونت إند يعمل على http://localhost:$FRONTEND_PORT"
-        log_mamoun "السجل: $LOG_DIR/frontend.log"
-        wait
+        echo "Options:"
+        echo "  (no option)     Start both frontend and backend in production mode"
+        echo "  --dev, -d       Start in development mode (hot reload)"
+        echo "  --frontend, -f  Start only the frontend"
+        echo "  --backend, -b   Start only the backend"
+        echo "  --rebuild, -r   Rebuild frontend before starting"
+        echo "  --check, -c     Only check configuration"
+        echo "  --help, -h      Show this help message"
         ;;
-    build)
-        check_requirements
+    --check|-c)
+        check_env
+        install_deps
+        create_dirs
+        echo -e "${GREEN}✓ Configuration check passed!${NC}"
+        ;;
+    *)
+        check_env
+        install_deps
+        create_dirs
         build_frontend
-        ;;
-    production|prod)
-        check_requirements
-        build_frontend
-        start_production
-        echo ""
-        log_mamoun "═══ النظام يعمل في وضع الإنتاج ═══"
-        show_status
-        wait
-        ;;
-    stop)
-        stop_all
-        ;;
-    status)
-        show_status
-        ;;
-    all|*)
-        check_requirements
-        
-        # Handle Ctrl+C gracefully
-        trap stop_all INT TERM
-        
-        start_backend
-        start_frontend
-        
-        echo ""
-        log_mamoun "═══ النظام يعمل بالكامل ═══"
-        echo ""
-        log_info "الفرونت إند: http://localhost:$FRONTEND_PORT"
-        log_info "الباك إند:   http://localhost:$BACKEND_PORT"
-        log_info "توثيق API:   http://localhost:$BACKEND_PORT/docs"
-        log_info "الصحة:       http://localhost:$BACKEND_PORT/health"
-        echo ""
-        log_mamoun "لإيقاف النظام: Ctrl+C أو ./launch.sh stop"
-        log_mamoun "لحالة النظام:  ./launch.sh status"
-        echo ""
-        log_mamoun "السجلات:"
-        log_info "  الباك إند:   $LOG_DIR/backend.log"
-        log_info "  الفرونت إند: $LOG_DIR/frontend.log"
-        echo ""
-        
-        # Keep script running
-        wait
+        start_services "$1"
         ;;
 esac

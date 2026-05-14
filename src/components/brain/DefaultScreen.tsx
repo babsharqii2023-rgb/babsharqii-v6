@@ -6,6 +6,8 @@ import MetricCard from '@/components/atomic/MetricCard';
 import DataTable from '@/components/atomic/DataTable';
 import ProgressBar from '@/components/atomic/ProgressBar';
 import CodeBlock from '@/components/atomic/CodeBlock';
+import StatusBadge from '@/components/atomic/StatusBadge';
+import ActionButtons from '@/components/atomic/ActionButtons';
 
 interface DefaultScreenProps {
   directive?: UIDirective;
@@ -36,6 +38,17 @@ function renderSection(
       return <ProgressBar {...commonProps as any} />;
     case 'CodeBlock':
       return <CodeBlock {...commonProps as any} />;
+    case 'StatusBadge':
+      return <StatusBadge status={String(commonProps.status || 'active')} size={(commonProps.size as 'sm' | 'md' | 'lg') || 'md'} />;
+    case 'ActionButtons':
+      return (
+        <ActionButtons
+          buttons={(commonProps.buttons as Array<{ label: string; intentId: string; variant: 'approve' | 'reject' | 'modify'; payload?: Record<string, unknown> }>) || []}
+          onAction={(btn) => {
+            onAction?.({ trigger: 'click', intentId: btn.intentId, payload: btn.payload });
+          }}
+        />
+      );
     default:
       return <MetricCard title="بيانات" value={JSON.stringify(commonProps).slice(0, 50)} />;
   }
