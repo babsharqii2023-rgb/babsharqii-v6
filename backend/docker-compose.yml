@@ -1,0 +1,98 @@
+# ═══════════════════════════════════════════════════════════════════════
+# BABSHARQII v40.0 "Mamoun" — Docker Compose (Production)
+# 5 AI Brains · NeuralBus · 400+ API Endpoints
+# ═══════════════════════════════════════════════════════════════════════
+
+services:
+  # ── Python Backend (FastAPI) ─────────────────────────────────
+  mamoun:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mamoun-backend
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+      - ./laws.yaml:/app/laws.yaml:ro
+    env_file:
+      - .env
+    environment:
+      - MAMOUN_FRONTEND_URL=http://host.docker.internal:3000
+      - MAMOUN_DEBUG=false
+      - MAMOUN_AUTO_EVOLVE=false
+      - MAMOUN_REQUIRE_APPROVAL=true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - mamoun-network
+
+  # ── SafetyGate (Parallax Principle — Separate Security Layer) ──
+  safety-gate:
+    build:
+      context: ./safety_gate
+      dockerfile: Dockerfile
+    container_name: mamoun-safety-gate
+    volumes:
+      - ./safety_gate/policies.yaml:/app/policies.yaml:ro
+    environment:
+      - MAMOUN_SAFETY_GATE_URL=http://safety-gate:8001
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - mamoun-network
+    profiles:
+      - safety
+
+  # ── Sandbox Container (started dynamically by SandboxRunner) ──
+  mamoun-sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mamoun-sandbox
+    environment:
+      - MAMOUN_SANDBOX_MODE=true
+      - MAMOUN_NO_API_KEYS=true
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M
+      - /app/data:size=50M
+      - /app/logs:size=10M
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    volumes:
+      - sandbox-test-data:/app/data:rw
+    profiles:
+      - sandbox
+    networks:
+      - mamoun-network
+
+volumes:
+  sandbox-test-data:
+
+networks:
+  mamoun-network:
+    driver: bridge

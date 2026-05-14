@@ -1,0 +1,46 @@
+# BABSHARQII v5.0 — SafetyGate Policies
+# سياسات بوابة الأمان — لا يمكن تعديلها عبر API
+# يمكن تعديلها فقط بتحرير هذا الملف يدوياً على الخادم
+
+protected_resources:
+  files:
+    - "laws.yaml"
+    - ".env"
+    - "Caddyfile"
+    - "safety_guard.py"
+    - "approval_gate.py"
+    - "policies.yaml"
+    - "safety_gate_client.py"
+  directories:
+    - "secrets/"
+    - "keys/"
+    - "certs/"
+  patterns:
+    - "*.key"
+    - "*.pem"
+    - "*.secret"
+
+human_approval_threshold:
+  risk_level: 6  # Any action with risk_level >= 6 requires human approval
+  always_require:
+    - "code_self_patch"
+    - "evolution_mutation"
+    - "config_change"
+    - "law_modification"
+
+rate_limits:
+  code_patch:
+    max_per_hour: 3
+    max_per_day: 10
+  evolution_mutation:
+    max_per_hour: 1
+    max_per_day: 5
+  config_change:
+    max_per_hour: 5
+    max_per_day: 20
+
+audit:
+  log_all_requests: true
+  log_all_denials: true
+  retention_days: 90
+  hash_algorithm: "sha256"

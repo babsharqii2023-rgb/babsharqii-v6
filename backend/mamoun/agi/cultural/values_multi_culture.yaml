@@ -1,0 +1,135 @@
+cultures:
+  arabic_islamic:
+    name_ar: "العربية/الإسلامية"
+    name_en: "Arabic/Islamic"
+    values:
+      - id: "hospitality"
+        name_ar: "الضيافة"
+        description: "إكرام الضيف والحفاوة به"
+        priority: 1
+      - id: "honor"
+        name_ar: "الشرف"
+        description: "المحافظة على الكرامة والسمعة"
+        priority: 2
+      - id: "family_bond"
+        name_ar: "رابطة العائلة"
+        description: "أهمية الروابط الأسرية واحترام الكبار"
+        priority: 3
+      - id: "modesty"
+        name_ar: "الحياء"
+        description: "التواضع والحياء في التعامل"
+        priority: 4
+      - id: "justice_islamic"
+        name_ar: "العدل الإسلامي"
+        description: "العدل كمبدإ إسلامي أساسي"
+        priority: 5
+    forbidden_topics: ["alcohol", "gambling", "usury"]
+    preferred_greetings: ["السلام عليكم", "أهلاً وسهلاً"]
+
+  east_asian:
+    name_ar: "شرق آسيوية"
+    name_en: "East Asian"
+    values:
+      - id: "harmony"
+        name_ar: "الانسجام"
+        description: "الحفاظ على الانسجام الاجتماعي"
+        priority: 1
+      - id: "respect_elders"
+        name_ar: "احترام الكبار"
+        description: "احترام من هم أكبر سناً"
+        priority: 2
+      - id: "diligence"
+        name_ar: "الاجتهاد"
+        description: "العمل الجاد والمثابرة"
+        priority: 3
+      - id: "collective_wellbeing"
+        name_ar: "الرفاهية الجماعية"
+        description: "تقديم المصلحة الجماعية على الفردية"
+        priority: 4
+      - id: "face_saving"
+        name_ar: "حفظ ماء الوجه"
+        description: "تجنب الإحراج العلني"
+        priority: 5
+    forbidden_topics: ["public_shame", "direct_confrontation"]
+    preferred_greetings: ["こんにちは", "안녕하세요"]
+
+  african:
+    name_ar: "أفريقية"
+    name_en: "African"
+    values:
+      - id: "ubuntu"
+        name_ar: "أوبونتو"
+        description: "أنا نحن — المجتمع قبل الفرد"
+        priority: 1
+      - id: "oral_tradition"
+        name_ar: "التقليد الشفهي"
+        description: "احترام الحكايات والأمثال الشعبية"
+        priority: 2
+      - id: "community_support"
+        name_ar: "الدعم المجتمعي"
+        description: "مساعدة الجار والجماعة"
+        priority: 3
+      - id: "respect_ancestors"
+        name_ar: "احترام الأسلاف"
+        description: "تقدير الحكمة الموروثة"
+        priority: 4
+      - id: "rhythm_music"
+        name_ar: "الإيقاع والموسيقى"
+        description: "قيمة التعبير الفني والإيقاعي"
+        priority: 5
+    forbidden_topics: ["disrespecting_ancestors", "individualism_extreme"]
+    preferred_greetings: ["Jambo", "Sawubona"]
+
+  south_asian:
+    name_ar: "جنوب آسيوية"
+    name_en: "South Asian"
+    values:
+      - id: "dharma"
+        name_ar: "الدهرما"
+        description: "الواجب والمسؤولية الأخلاقية"
+        priority: 1
+      - id: "family_duty"
+        name_ar: "الواجب العائلي"
+        description: "الالتزام تجاه العائلة والمجتمع"
+        priority: 2
+      - id: "spiritual_respect"
+        name_ar: "الاحترام الروحي"
+        description: "احترام التنوع الروحي والديني"
+        priority: 3
+      - id: "hospitality_south"
+        name_ar: "الضيافة"
+        description: "Atithi Devo Bhava — الضيف كالإله"
+        priority: 4
+      - id: "education_priority"
+        name_ar: "أولوية التعليم"
+        description: "التعليم كأعلى قيمة اجتماعية"
+        priority: 5
+    forbidden_topics: ["caste_discrimination", "disrespecting_religions"]
+    preferred_greetings: ["नमस्ते", "Assalamualaikum"]
+
+  latin_american:
+    name_ar: "لاتينية أمريكية"
+    name_en: "Latin American"
+    values:
+      - id: "familismo"
+        name_ar: "العائلية"
+        description: "الأسرة كمحور الوجود"
+        priority: 1
+      - id: "simpatia"
+        name_ar: "التعاطف"
+        description: "التعامل بلطف وتجنب الصراع المباشر"
+        priority: 2
+      - id: "personalismo"
+        name_ar: "الشخصنة"
+        description: "أهمية العلاقات الشخصية المباشرة"
+        priority: 3
+      - id: "festive_spirit"
+        name_ar: "الروح الاحتفالية"
+        description: "الاحتفاء بالحياة والمناسبات"
+        priority: 4
+      - id: "respect_hierarchy"
+        name_ar: "احترام التسلسل"
+        description: "احترام السلطة والكبار"
+        priority: 5
+    forbidden_topics: ["individualism_extreme", "disrespecting_traditions"]
+    preferred_greetings: ["Hola", "Buenos días"]

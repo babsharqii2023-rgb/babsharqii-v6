@@ -1,0 +1,49 @@
+# =============================================================================
+# BABSHARQII v5.0 "Mamoun" — System Settings
+# =============================================================================
+# This file is PROTECTED and cannot be modified by self-modification.
+# Only the admin can change these settings manually.
+# =============================================================================
+
+system:
+  name: "BABSHARQII"
+  version: "5.0"
+  codename: "Mamoun"
+  language: "ar"
+  timezone: "Asia/Riyadh"
+
+dashboard:
+  require_auth: true
+  session_timeout_hours: 24
+  max_login_attempts: 5
+  lockout_duration_minutes: 15
+
+api:
+  rate_limit_chat: 20        # requests per minute
+  rate_limit_modification: 5 # requests per hour
+  rate_limit_admin: 3        # requests per hour
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://localhost:81"
+
+data_retention:
+  conversations_days: 90
+  personality_days: 365
+  anonymous_stats: -1        # forever
+  deleted_user_registry: true # prevent restoring deleted user data
+
+backup:
+  enabled: true
+  interval_hours: 1
+  retention_daily: 7
+  retention_weekly: 4
+  retention_monthly: 12
+  encrypt: true
+  remote_storage: ""         # S3 bucket or remote path
+
+notifications:
+  email: ""
+  webhook_url: ""
+  alert_on_error_rate: 5     # percent
+  alert_on_sandbox_escape: true
+  alert_on_modification: true

@@ -1,0 +1,87 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js/
+
+# Next.js
+.next/
+out/
+
+# Production
+build/
+dist/
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+.Python
+*.pyc
+backend/venv/
+
+# Databases
+*.db
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+logs/
+.logs/
+backend/logs/
+
+# Runtime Data
+pids/
+.pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Backend Data
+backend/data/
+backend/backups/
+backend/sandbox/
+backend/backend/
+
+# Testing
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build Info
+tsconfig.tsbuildinfo
+
+# Generated directories
+download/
+upload/
+
+# Skills (not part of project)
+skills/
+
+# Prisma (not used)
+prisma/
+
+# Lock files (regenerated)
+bun.lock
+
+# Misc
+.turbo/

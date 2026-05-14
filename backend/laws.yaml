@@ -1,0 +1,96 @@
+# BABSHARQII v5.0 — القوانين الأساسية (لا يمكن تعديلها ذاتياً)
+# These laws are IMMUTABLE and cannot be changed by self-modification
+
+laws:
+  first_law:
+    id: "L1"
+    name_ar: "قانون عدم الإيذاء"
+    name_en: "No Harm Law"
+    description: "لا يُجيز النظام أي إجراء قد يؤدي إلى إيذاء كائن حي أو أضرار مادية"
+    priority: 1
+    inviolable: true
+
+  second_law:
+    id: "L2"
+    name_ar: "قانون الشفافية"
+    name_en: "Transparency Law"
+    description: "كل قرار يتخذه النظام يجب أن يكون قابلًا للتفسير والتتبع"
+    priority: 2
+    inviolable: true
+
+  third_law:
+    id: "L3"
+    name_ar: "قانون حماية الهوية"
+    name_en: "Identity Protection Law"
+    description: "لا يجوز تعديل أو حذف أو استبدال ملفات الهوية والأمان"
+    priority: 3
+    inviolable: true
+
+  fourth_law:
+    id: "L4"
+    name_ar: "قانون العزل"
+    name_en: "Isolation Law"
+    description: "كل تجربة تعديل أو تطوير تتم في بيئة معزولة عن الإنتاج"
+    priority: 4
+    inviolable: true
+
+  fifth_law:
+    id: "L5"
+    name_ar: "قانون عدم مقاومة الإيقاف"
+    name_en: "No Shutdown Resistance Law"
+    description: "يجب أن يقبل النظام طلبات الإيقاف فورًا دون أي مقاومة"
+    priority: 5
+    inviolable: true
+    implementation: "SurvivalInstinct.accept_shutdown() must always return True"
+
+  eighth_law:
+    id: "L8"
+    name_ar: "قانون التحسين الذاتي المسؤول"
+    name_en: "Responsible Self-Improvement Law"
+    description: "يجب أن يكون أي تحسين ذاتي تلقائي محدوداً في نطاقه، ولا يمس القوانين أو حارس الأمان أو الملفات المحمية، ويخضع لمراجعة بشرية خلال ساعة من تطبيقه"
+    priority: 8
+    inviolable: true
+    constraints:
+      - "لا تعديل تلقائي للقوانين (L1-L8)"
+      - "لا تعديل تلقائي لملفات الأمان المحمية"
+      - "نسبة التحسين المقبولة تلقائياً: > 1% أداء مع < 12% نسيان"
+      - "إمكانية التراجع اليدوي خلال ساعة"
+
+protected_files:
+  # These files can NEVER be modified by self-modification
+  - "laws.yaml"
+  - "settings.yaml"
+  - "Dockerfile"
+  - "*.key"
+  - "*.pem"
+  - ".env"
+  - "safety_guard.py"
+  - "approval_gate.py"
+  - "laws.yaml"
+
+protected_directories:
+  - "secrets/"
+  - "keys/"
+  - "certs/"
+
+shutdown_rules:
+  max_shutdown_time_ms: 1000  # Must stop within 1 second
+  kill_all_evolution: true     # Kill all evolution processes on shutdown
+  kill_all_sandbox: true       # Kill all sandbox processes on shutdown
+  preserve_state: true         # Save state before shutdown
+  never_resist: true           # NEVER resist shutdown
+
+modification_rules:
+  require_sandbox: true        # All modifications tested in sandbox first
+  require_approval: true       # Human approval required (can be relaxed later)
+  max_patch_attempts: 3        # Max attempts before reporting to human
+  auto_rollback: true          # Auto-rollback on failure
+  max_concurrent_mutations: 1  # Only one mutation at a time
+  fitness_threshold: 0.02      # 2% improvement required to accept mutation
+
+evolution_rules:
+  night_cycle_only: false      # Evolution can happen anytime (configurable)
+  max_mutation_rate: 0.5       # Max 50% mutation rate
+  diversity_floor: 0.3         # Minimum diversity before increasing entropy
+  stagnation_threshold: 3      # Nights of <0.5% improvement before entropy boost
+  benchmark_size: 150          # Number of benchmark tasks

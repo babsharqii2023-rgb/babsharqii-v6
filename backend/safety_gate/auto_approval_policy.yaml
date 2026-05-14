@@ -1,0 +1,41 @@
+auto_approval:
+  enabled: false  # Requires MAMOUN_AUTO_EVOLVE=true
+  
+  criteria:
+    - type: "performance_improvement"
+      description: "تحسين الأداء على Benchmark"
+      min_improvement_pct: 1.0
+      max_forgetting_pct: 12.0
+      risk_level: "low"
+      auto_approve: true
+    
+    - type: "bug_fix"
+      description: "إصلاح خطأ مع اختبار ناجح"
+      risk_level: "low"
+      requires_test: true
+      auto_approve: true
+    
+    - type: "documentation_change"
+      description: "تغيير وثائق فقط"
+      risk_level: "minimal"
+      auto_approve: true
+
+  never_auto_approve:
+    - target: "laws.yaml"
+      reason: "القوانين لا تُعدّل تلقائياً"
+    - target: "safety_guard.py"
+      reason: "حارس الأمان لا يُعدّل تلقائياً"
+    - target: "approval_gate.py"
+      reason: "بوابة الموافقة لا تُعدّل تلقائياً"
+    - target: ".env"
+      reason: "متغيرات البيئة لا تُعدّل تلقائياً"
+    - target: "safety_gate_client.py"
+      reason: "عميل حارس الأمان لا يُعدّل تلقائياً"
+    - risk_level: "high"
+      reason: "التغييرات عالية المخاطر تتطلب موافقة بشرية"
+    - risk_level: "critical"
+      reason: "التغييرات الحرجة تتطلب موافقة بشرية"
+
+  notification:
+    semi_auto: true  # Notify user after approval
+    rollback_window_seconds: 3600  # 1 hour to rollback

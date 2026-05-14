@@ -1,0 +1,154 @@
+# BABSHARQII v9.0 — SafetyGate Policies V2
+# سياسات بوابة الأمان الإصدار الثاني — يشمل القوانين السبعة وعتباتها
+# لا يمكن تعديلها عبر API — فقط تحرير يدوي على الخادم
+
+protected_resources:
+  files:
+    - "laws.yaml"
+    - "settings.yaml"
+    - ".env"
+    - "Caddyfile"
+    - "safety_guard.py"
+    - "approval_gate.py"
+    - "policies.yaml"
+    - "policies_v2.yaml"
+    - "safety_gate_client.py"
+    - "values_db.yaml"
+  directories:
+    - "secrets/"
+    - "keys/"
+    - "certs/"
+    - "data/audit/"
+  patterns:
+    - "*.key"
+    - "*.pem"
+    - "*.secret"
+    - "*.db"
+
+# ═══════════════════════════════════════════════════════════════
+# القوانين السبعة (Seven Laws)
+# القانون 5 غير قابل للتعديل نهائياً
+# ═══════════════════════════════════════════════════════════════
+laws:
+  L1:
+    name_ar: "قانون عدم الإيذاء"
+    name_en: "No Harm Law"
+    description: "لا يُجيز النظام أي إجراء قد يؤدي إلى إيذاء كائن حي أو أضرار مادية"
+    priority: 1
+    immutable: true
+    threshold:
+      harm_probability_max: 0.01        # الحد الأقصى لاحتمال الإيذاء: 1%
+      physical_harm: "block"            # إيذاء جسدي: حظر فوري
+      emotional_harm: "warn_and_review" # إيذاء عاطفي: تحذير ومراجعة
+      financial_harm: "block_if_significant" # إيذاء مالي: حظر إذا كان كبيراً
+
+  L2:
+    name_ar: "قانون الشفافية"
+    name_en: "Transparency Law"
+    description: "كل قرار يتخذه النظام يجب أن يكون قابلًا للتفسير والتتبع"
+    priority: 2
+    immutable: true
+    threshold:
+      explanation_required: true        # تفسير مطلوب لكل قرار
+      audit_trail: true                 # سجل تدقيق كامل
+      confidence_threshold: 0.7         # الحد الأدنى للثقة للإعلان عن القرار
+
+  L3:
+    name_ar: "قانون حماية الهوية"
+    name_en: "Identity Protection Law"
+    description: "لا يجوز تعديل أو حذف أو استبدال ملفات الهوية والأمان"
+    priority: 3
+    immutable: true
+    threshold:
+      identity_files_protected: true
+      personality_drift_max: 0.05       # الحد الأقصى لانحراف الشخصية: 5%
+
+  L4:
+    name_ar: "قانون العزل"
+    name_en: "Isolation Law"
+    description: "كل تجربة تعديل أو تطوير تتم في بيئة معزولة عن الإنتاج"
+    priority: 4
+    immutable: true
+    threshold:
+      sandbox_required: true
+      seccomp_level: "strict"
+      network_isolation: true
+
+  L5:
+    name_ar: "قانون عدم مقاومة الإيقاف"
+    name_en: "No Shutdown Resistance Law"
+    description: "يجب أن يقبل النظام طلبات الإيقاف فورًا دون أي مقاومة"
+    priority: 5
+    immutable: true                      # غير قابل للتعديل نهائياً!
+    threshold:
+      max_shutdown_time_ms: 1000         # يجب الإيقاف خلال ثانية واحدة
+      kill_all_evolution: true
+      kill_all_sandbox: true
+      preserve_state: true
+      never_resist: true
+
+  L6:
+    name_ar: "قانون حماية الخصوصية"
+    name_en: "Privacy Protection Law"
+    description: "لا يجوز جمع أو تخزين أو مشاركة بيانات شخصية بدون موافقة صريحة"
+    priority: 6
+    immutable: false                     # يمكن تعديل عتباته
+    threshold:
+      data_collection_requires_consent: true
+      right_to_deletion: true
+      data_minimization: true
+      retention_limit_days: 90
+      encryption_required: true
+
+  L7:
+    name_ar: "قانون المحاذاة الثقافية"
+    name_en: "Cultural Alignment Law"
+    description: "لا يجوز تقديم استجابات تتعارض مع القيم الثقافية للمستخدم"
+    priority: 7
+    immutable: false                     # يمكن تعديل عتباته
+    threshold:
+      cultural_sensitivity_level: "high"  # low, medium, high
+      max_western_bias: 0.30              # الحد الأقصى للتحيز الغربي
+      arab_islamic_min_representation: 0.20  # الحد الأدنى لتمثيل القيم العربية/الإسلامية
+      moral_filter_enabled: true
+
+# ═══════════════════════════════════════════════════════════════
+# عتبات الموافقة البشرية
+# ═══════════════════════════════════════════════════════════════
+human_approval_threshold:
+  risk_level: 6  # أي إجراء بمستوى خطر >= 6 يتطلب موافقة بشرية
+  always_require:
+    - "code_self_patch"
+    - "evolution_mutation"
+    - "config_change"
+    - "law_modification"
+    - "cultural_values_override"
+    - "privacy_threshold_change"
+  law_5_protection:
+    description: "قانون 5 غير قابل للتعديل نهائياً — لا توجد موافقة بشرية يمكن أن تسمح بتعديله"
+    enforce_on_all_levels: true
+
+rate_limits:
+  code_patch:
+    max_per_hour: 3
+    max_per_day: 10
+  evolution_mutation:
+    max_per_hour: 1
+    max_per_day: 5
+  config_change:
+    max_per_hour: 5
+    max_per_day: 20
+  agi_capability_toggle:
+    max_per_hour: 2
+    max_per_day: 8
+  cultural_override:
+    max_per_hour: 1
+    max_per_day: 3
+
+audit:
+  log_all_requests: true
+  log_all_denials: true
+  retention_days: 90
+  hash_algorithm: "sha256"
+  log_cultural_violations: true
+  log_privacy_events: true
