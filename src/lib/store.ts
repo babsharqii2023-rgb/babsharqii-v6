@@ -202,6 +202,8 @@ interface AppStore {
   setActiveScreen: (screen: string | null) => void;
   screenProps: Record<string, any>;
   setScreenProps: (props: Record<string, any>) => void;
+  screenTransition: 'entering' | 'active' | 'exiting' | null;
+  setScreenTransition: (t: 'entering' | 'active' | 'exiting' | null) => void;
 
   // v61 SuperMind: Sound preferences
   soundEnabled: boolean;
@@ -215,6 +217,14 @@ interface AppStore {
   // v61 SuperMind: Brain states map
   brainStates: Record<string, any>;
   setBrainStates: (states: Record<string, any>) => void;
+
+  // v62 SuperMind: Deliberation tracking
+  deliberationProgress: number;
+  setDeliberationProgress: (p: number) => void;
+  thinkingBrains: string[];
+  setThinkingBrains: (brains: string[]) => void;
+  isStreaming: boolean;
+  setIsStreaming: (v: boolean) => void;
 }
 
 // ─── Default Brains ────────────────────────────────────────────
@@ -384,6 +394,8 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   setActiveScreen: (screen: string | null) => set({ activeScreen: screen }),
   screenProps: {},
   setScreenProps: (props: Record<string, any>) => set({ screenProps: props }),
+  screenTransition: null,
+  setScreenTransition: (t: 'entering' | 'active' | 'exiting' | null) => set({ screenTransition: t }),
 
   // v61 SuperMind: Sound preferences
   soundEnabled: true,
@@ -397,6 +409,14 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   // v61 SuperMind: Brain states map
   brainStates: {},
   setBrainStates: (states: Record<string, any>) => set({ brainStates: states }),
+
+  // v62 SuperMind: Deliberation tracking
+  deliberationProgress: 0,
+  setDeliberationProgress: (p: number) => set({ deliberationProgress: p }),
+  thinkingBrains: [],
+  setThinkingBrains: (brains: string[]) => set({ thinkingBrains: brains }),
+  isStreaming: false,
+  setIsStreaming: (v: boolean) => set({ isStreaming: v }),
 }));
 
 // ─── Feedforward Generation ──────────────────────────────────

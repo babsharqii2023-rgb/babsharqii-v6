@@ -6,8 +6,10 @@
 
 export type SuperMindIntent =
   | 'projects.list'
+  | 'projects.monitor'
   | 'site.stats'
   | 'research.deep'
+  | 'research.extended'
   | 'tool.create'
   | 'agent.build'
   | 'deploy'
@@ -16,6 +18,7 @@ export type SuperMindIntent =
   | 'workflow'
   | 'terminal'
   | 'brain.state'
+  | 'vitals'
   | 'conversations.search'
   | 'update.pull'
   | 'default';
@@ -181,8 +184,8 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     intent: 'self.modify',
-    screenComponent: 'HealingPanel',
-    apiEndpoint: '/api/super-mind/chat',
+    screenComponent: 'SelfModifyPanel',
+    apiEndpoint: '/api/super-mind/kernel',
     animation: 'pulseIn',
     soundEvent: 'brain.activate',
     activatedBrains: ['neural', 'symbolic', 'world_model'],
@@ -199,7 +202,7 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     intent: 'workflow',
-    screenComponent: 'ToolCreatorPanel',
+    screenComponent: 'WorkflowDesigner',
     apiEndpoint: '/api/super-mind/chat',
     animation: 'slideRight',
     soundEvent: 'intent.detected',
@@ -234,8 +237,8 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     intent: 'brain.state',
-    screenComponent: 'SiteStatsPanel',
-    apiEndpoint: '/api/super-mind/chat',
+    screenComponent: 'BrainStateOverlay',
+    apiEndpoint: '/api/super-mind/brain-state',
     animation: 'fadeIn',
     soundEvent: 'brain.activate',
     activatedBrains: ['neural', 'causal', 'symbolic', 'bayesian', 'world_model'],
@@ -249,6 +252,60 @@ const INTENT_RULES: IntentRule[] = [
     ],
     keywords: ['دماغ', 'أدمغة', 'وعي', 'brain', 'consciousness'],
     priority: 75,
+  },
+  {
+    intent: 'projects.monitor',
+    screenComponent: 'ProjectsTracker',
+    apiEndpoint: '/api/super-mind/projects',
+    animation: 'fadeIn',
+    soundEvent: 'intent.detected',
+    activatedBrains: ['neural', 'causal'],
+    labelAr: 'مراقبة المشروع',
+    labelEn: 'Project Monitor',
+    icon: '📡',
+    patterns: [
+      /راقب|حالة المشروع|monitor project/i,
+      /halat|status project/i,
+      /تقدم المشروع|project progress/i,
+    ],
+    keywords: ['راقب', 'حالة المشروع', 'monitor', 'status', 'تقدم'],
+    priority: 72,
+  },
+  {
+    intent: 'research.extended',
+    screenComponent: 'ResearchPanel',
+    apiEndpoint: '/api/super-mind/research',
+    animation: 'expandDown',
+    soundEvent: 'brain.activate',
+    activatedBrains: ['neural', 'causal', 'world_model', 'bayesian'],
+    labelAr: 'البحث الممتد',
+    labelEn: 'Extended Research',
+    icon: '🔬',
+    patterns: [
+      /بحث ممتد|extended research/i,
+      /بحث طويل|taheel|deep analysis/i,
+      /تحليل معمق|thorough research/i,
+    ],
+    keywords: ['بحث ممتد', 'extended research', 'بحث طويل', 'تحليل معمق'],
+    priority: 68,
+  },
+  {
+    intent: 'vitals',
+    screenComponent: 'SiteStatsPanel',
+    apiEndpoint: '/api/super-mind/vitals',
+    animation: 'fadeIn',
+    soundEvent: 'brain.activate',
+    activatedBrains: ['causal', 'bayesian'],
+    labelAr: 'الحيوية',
+    labelEn: 'Vitals',
+    icon: '❤️',
+    patterns: [
+      /حيوية|صحة|vitals|health|sihha/i,
+      /نبض|heartbeat|pulse/i,
+      /مؤشرات|indicators|metrics/i,
+    ],
+    keywords: ['حيوية', 'صحة', 'vitals', 'health', 'نبض', 'مؤشرات'],
+    priority: 73,
   },
   {
     intent: 'conversations.search',
@@ -269,8 +326,8 @@ const INTENT_RULES: IntentRule[] = [
   },
   {
     intent: 'update.pull',
-    screenComponent: 'HealingPanel',
-    apiEndpoint: '/api/update/pull',
+    screenComponent: 'UpdatePanel',
+    apiEndpoint: '/api/super-mind/update',
     animation: 'pulseIn',
     soundEvent: 'brain.activate',
     activatedBrains: ['neural', 'causal', 'symbolic'],

@@ -89,6 +89,38 @@ export const SCREEN_REGISTRY: Record<string, ScreenDefinition> = {
     icon: '📋',
     description: 'شاشة عامة تعرض توجيهات واجهة المستخدم',
   },
+  SelfModifyPanel: {
+    id: 'SelfModifyPanel',
+    component: 'SelfModifyPanel',
+    labelAr: 'التعديل الذاتي',
+    labelEn: 'Self-Modify',
+    icon: '🧬',
+    description: 'اقتراحات التعديل الذاتي مع عرض التغييرات',
+  },
+  WorkflowDesigner: {
+    id: 'WorkflowDesigner',
+    component: 'WorkflowDesigner',
+    labelAr: 'مصمم سير العمل',
+    labelEn: 'Workflow Designer',
+    icon: '⚡',
+    description: 'مصمم سير العمل المرئي مع رسم بياني',
+  },
+  BrainStateOverlay: {
+    id: 'BrainStateOverlay',
+    component: 'BrainStateOverlay',
+    labelAr: 'تراكب الأدمغة',
+    labelEn: 'Brain State Overlay',
+    icon: '🧠',
+    description: 'حالة تفصيلية لكل دماغ مع المقاييس',
+  },
+  UpdatePanel: {
+    id: 'UpdatePanel',
+    component: 'UpdatePanel',
+    labelAr: 'التحديث الذاتي',
+    labelEn: 'Update Panel',
+    icon: '🔄',
+    description: 'لوحة التحديث مع التقدم والتفاصيل',
+  },
 };
 
 /**
@@ -139,6 +171,22 @@ export async function loadScreenComponent(screenId: string): Promise<ComponentTy
       }
       case 'DefaultScreen': {
         const mod = await import('@/components/brain/DefaultScreen');
+        return mod.default;
+      }
+      case 'SelfModifyPanel': {
+        const mod = await import('@/components/brain/SelfModifyPanel');
+        return mod.default;
+      }
+      case 'WorkflowDesigner': {
+        const mod = await import('@/components/brain/WorkflowDesigner');
+        return mod.default;
+      }
+      case 'BrainStateOverlay': {
+        const mod = await import('@/components/brain/BrainStateOverlay');
+        return mod.default;
+      }
+      case 'UpdatePanel': {
+        const mod = await import('@/components/brain/UpdatePanel');
         return mod.default;
       }
       default:
