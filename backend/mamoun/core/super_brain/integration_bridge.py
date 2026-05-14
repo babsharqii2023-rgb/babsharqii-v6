@@ -88,6 +88,8 @@ class SuperMindContext:
     self_modifier: dict = field(default_factory=dict)
     evolution_loop: dict = field(default_factory=dict)
     auto_deploy: dict = field(default_factory=dict)
+    global_workspace: dict = field(default_factory=dict)
+    reflexion_engine: dict = field(default_factory=dict)
 
     # Meta
     timestamp: float = field(default_factory=time.time)
@@ -284,6 +286,22 @@ def get_supermind_context(kernel=None) -> SuperMindContext:
     if auto_deploy:
         try:
             ctx.auto_deploy = auto_deploy.get_stats()
+        except Exception:
+            pass
+
+    # v61: GlobalWorkspace
+    global_workspace = get_component("global_workspace")
+    if global_workspace:
+        try:
+            ctx.global_workspace = global_workspace.get_stats()
+        except Exception:
+            pass
+
+    # v61: ReflexionEngine
+    reflexion_engine = get_component("reflexion_engine")
+    if reflexion_engine:
+        try:
+            ctx.reflexion_engine = reflexion_engine.get_stats()
         except Exception:
             pass
 
@@ -746,6 +764,21 @@ async def initialize_super_brain(kernel=None, llm_client=None, neural_bus=None) 
     evolution_loop = get_or_create_evolution_loop(kernel=kernel)
     results["evolution_loop_v2"] = "initialized" if evolution_loop else "failed"
 
+    # 15. GlobalWorkspace (v61: merged from old core)
+    global_workspace = get_or_create_global_workspace(
+        neural_bus=neural_bus,
+        meta_cognition=meta_cognition,
+    )
+    results["global_workspace"] = "initialized" if global_workspace else "failed"
+
+    # 16. ReflexionEngine (v61: merged from old core)
+    reflexion_engine = get_or_create_reflexion_engine(
+        neural_bus=neural_bus,
+        meta_cognition=meta_cognition,
+        llm_client=llm_client,
+    )
+    results["reflexion_engine"] = "initialized" if reflexion_engine else "failed"
+
     # Start HealthMonitor background monitoring
     if health_monitor:
         try:
@@ -785,3 +818,43 @@ def get_or_create_web_search_client():
             return client
         except Exception:
             return None
+
+
+def get_or_create_global_workspace(neural_bus=None, meta_cognition=None) -> Any:
+    """Get existing GlobalWorkspace or create a new one with fallback."""
+    existing = get_component("global_workspace")
+    if existing:
+        return existing
+
+    try:
+        from mamoun.core.super_brain.global_workspace import GlobalWorkspace
+        workspace = GlobalWorkspace(
+            neural_bus=neural_bus,
+            meta_cognition=meta_cognition,
+        )
+        set_component("global_workspace", workspace)
+        return workspace
+    except Exception as e:
+        logger.warning(f"Failed to create GlobalWorkspace: {e}")
+        return None
+
+
+def get_or_create_reflexion_engine(neural_bus=None, meta_cognition=None,
+                                    llm_client=None) -> Any:
+    """Get existing ReflexionEngine or create a new one with fallback."""
+    existing = get_component("reflexion_engine")
+    if existing:
+        return existing
+
+    try:
+        from mamoun.core.super_brain.reflexion_engine import ReflexionEngine
+        engine = ReflexionEngine(
+            neural_bus=neural_bus,
+            meta_cognition=meta_cognition,
+            llm_client=llm_client,
+        )
+        set_component("reflexion_engine", engine)
+        return engine
+    except Exception as e:
+        logger.warning(f"Failed to create ReflexionEngine: {e}")
+        return None

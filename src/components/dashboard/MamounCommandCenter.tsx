@@ -203,6 +203,100 @@ export default function MamounCommandCenter() {
     });
   }, [soundEnabled, soundVolume, soundMode, brainSound]);
 
+  // ─── Handle Self-Update Intent ─────────────────────────────────
+  const handleSelfUpdate = useCallback(async () => {
+    setThinking(true);
+    setActiveBrains(['neural', 'causal', 'symbolic']);
+    brainSound.playEvent('brain.activate', { brainId: 'neural' });
+
+    addMessage({
+      id: `update-start-${Date.now()}`,
+      role: 'assistant',
+      content: '🔄 جاري فحص التحديثات من GitHub...',
+      timestamp: Date.now(),
+      confidence: 0.9,
+    });
+
+    try {
+      // Step 1: Check for updates
+      const checkRes = await fetch('/api/update/check');
+      const checkData = await checkRes.json();
+
+      if (checkData.status === 'up_to_date') {
+        addMessage({
+          id: `update-uptodate-${Date.now()}`,
+          role: 'assistant',
+          content: '✅ النظام محدث بالفعل — لا توجد تحديثات جديدة.',
+          timestamp: Date.now(),
+          confidence: 1,
+          brain: 'causal',
+        });
+        brainSound.playEvent('operation.complete');
+        setThinking(false);
+        setActiveBrains(['neural']);
+        return;
+      }
+
+      const newCommits = checkData.new_commits || 0;
+      addMessage({
+        id: `update-found-${Date.now()}`,
+        role: 'assistant',
+        content: `📡 تم العثور على ${newCommits} تحديث جديد. جاري السحب والمراجعة...`,
+        timestamp: Date.now(),
+        confidence: 0.95,
+        brain: 'neural',
+      });
+
+      // Step 2: Pull and apply updates
+      const pullRes = await fetch('/api/update/pull', { method: 'POST' });
+      const pullData = await pullRes.json();
+
+      if (pullData.status === 'success') {
+        addMessage({
+          id: `update-success-${Date.now()}`,
+          role: 'assistant',
+          content: `✅ تم التحديث بنجاح! Commit: ${pullData.new_commit || 'unknown'} — الوقت: ${pullData.elapsed_seconds || '?'} ثانية\n${pullData.had_local_changes ? '⚠️ كانت هناك تعديلات محلية تم حفظها.' : ''}${pullData.conflicts_resolved ? '🔧 تم حل تعارضات تلقائياً.' : ''}`,
+          timestamp: Date.now(),
+          confidence: 1,
+          brain: 'neural',
+          metadata: { type: 'update', data: pullData },
+        });
+        brainSound.playEvent('operation.complete');
+      } else if (pullData.status === 'up_to_date') {
+        addMessage({
+          id: `update-uptodate2-${Date.now()}`,
+          role: 'assistant',
+          content: '✅ النظام محدث بالفعل.',
+          timestamp: Date.now(),
+          confidence: 1,
+          brain: 'causal',
+        });
+      } else {
+        addMessage({
+          id: `update-fail-${Date.now()}`,
+          role: 'assistant',
+          content: `❌ فشل التحديث: ${pullData.error || pullData.message || 'خطأ غير معروف'}`,
+          timestamp: Date.now(),
+          confidence: 0.5,
+          brain: 'causal',
+        });
+        brainSound.playEvent('operation.error');
+      }
+    } catch (err) {
+      addMessage({
+        id: `update-err-${Date.now()}`,
+        role: 'assistant',
+        content: '❌ فشل الاتصال بخادم التحديثات. تأكد من أن الباك إند يعمل.',
+        timestamp: Date.now(),
+        confidence: 0.3,
+        brain: 'causal',
+      });
+      brainSound.playEvent('operation.error');
+    }
+    setThinking(false);
+    setActiveBrains(['neural']);
+  }, [addMessage, setThinking, brainSound]);
+
   // ─── Handle Send ──────────────────────────────────────────────
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
@@ -252,7 +346,13 @@ export default function MamounCommandCenter() {
       );
     }
 
-    // 7. Call /api/super-mind/chat (with fallback to /api/mamoun-chat)
+    // 7. Handle special intents directly
+    if (route.intent === 'update.pull') {
+      handleSelfUpdate();
+      return;
+    }
+
+    // 8. Call /api/super-mind/chat (with fallback to /api/mamoun-chat)
     try {
       const chatHistory = messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -360,6 +460,7 @@ export default function MamounCommandCenter() {
     inputText, messages, defaultModel, brainConfidences,
     sendMessage, addMessage, setThinking, updateDeliberationData,
     brainSound, setCurrentIntent, setActiveScreen, setScreenProps,
+    handleSelfUpdate,
   ]);
 
   // ─── Handle Key Down ─────────────────────────────────────────
@@ -409,19 +510,22 @@ export default function MamounCommandCenter() {
   // Render
   // ═══════════════════════════════════════════════════════════════
   return (
-    <div dir="rtl" style={{
+    <div dir="rtl" className="supermind-root" style={{
       display: 'flex', flexDirection: 'column',
       height: '100vh', width: '100vw',
       background: T.bg, color: T.text,
       fontFamily: "'Cairo', 'Tajawal', 'Space Grotesk', system-ui, sans-serif",
       overflow: 'hidden',
     }}>
-      {/* ─── Main Three-Panel Area ─── */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+      {/* ─── Main Three-Panel Area (responsive) ─── */}
+      <div style={{
+        display: 'flex', flex: 1, minHeight: 0,
+        flexDirection: 'row',
+      }} className="supermind-panels">
 
         {/* ═══════ Panel 1: Chat (30%) ═══════ */}
-        <div ref={chatPanelRef} style={{
-          width: '30%', minWidth: 280, maxWidth: 440,
+        <div ref={chatPanelRef} className="supermind-chat-panel" style={{
+          width: '30%', minWidth: 240, maxWidth: 440,
           display: 'flex', flexDirection: 'column',
           background: T.chatBg,
           borderLeft: `1px solid ${T.white08}`,
@@ -521,7 +625,7 @@ export default function MamounCommandCenter() {
                   أنا أتحكم بكل شيء: الباك إند، الفرونت إند، الأدمغة، GitHub، البحث، الإصلاح
                 </div>
                 <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center' }}>
-                  {['أرني المشاريع', 'إحصائيات الموقع', 'أصلح الأخطاء', 'ابحث عن...', 'أنشئ أداة', 'افتح الطرفية'].map(cmd => (
+                  {['أرني المشاريع', 'إحصائيات الموقع', 'أصلح الأخطاء', 'ابحث عن...', 'أنشئ أداة', 'افتح الطرفية', 'حدث نفسك'].map(cmd => (
                     <button
                       key={cmd}
                       onClick={() => { setInputText(cmd); }}
@@ -625,7 +729,7 @@ export default function MamounCommandCenter() {
         </div>
 
         {/* ═══════ Panel 2: Context Screen (40%) ═══════ */}
-        <div ref={contextPanelRef} style={{
+        <div ref={contextPanelRef} className="supermind-context-panel" style={{
           width: '40%',
           display: 'flex', flexDirection: 'column',
           background: T.bg,
@@ -641,7 +745,7 @@ export default function MamounCommandCenter() {
         </div>
 
         {/* ═══════ Panel 3: Brain Network (30%) ═══════ */}
-        <div ref={brainPanelRef} style={{
+        <div ref={brainPanelRef} className="supermind-brain-panel" style={{
           width: '30%',
           display: 'flex', flexDirection: 'column',
           background: T.bg,

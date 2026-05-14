@@ -153,73 +153,61 @@ function BrainSphere({ brainId, position, isActive, confidence, onClick }: Brain
   );
 }
 
-// ─── Synapse Connection ────────────────────────────────────────
+// ─── Instanced Particles for Synapse ──────────────────────────
+// Uses a single InstancedMesh for ALL synapse particles across
+// ALL connections — massive performance improvement vs per-connection instancing
 
-interface SynapsePathProps {
-  start: [number, number, number];
-  end: [number, number, number];
-  active: boolean;
-  color1: string;
-  color2: string;
-}
+const TOTAL_PARTICLES_PER_CONN = 6;
 
-function SynapsePath({ start, end, active, color1, color2 }: SynapsePathProps) {
-  const particlesRef = useRef<THREE.InstancedMesh>(null);
-  const particleCount = 6;
+function AllSynapseParticles({ connections, activeBrains, brainPositions }: {
+  connections: Array<{ from: number; to: number }>;
+  activeBrains: string[];
+  brainPositions: Array<[number, number, number]>;
+}) {
+  const totalParticles = connections.length * TOTAL_PARTICLES_PER_CONN;
+  const instRef = useRef<THREE.InstancedMesh>(null);
+  const dummy = useMemo(() => new THREE.Object3D(), []);
 
   useFrame((state) => {
-    if (!particlesRef.current || !active) return;
+    if (!instRef.current) return;
     const t = state.clock.getElapsedTime();
+    let idx = 0;
 
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < particleCount; i++) {
-      const progress = ((t * 0.5 + i / particleCount) % 1);
-      const x = start[0] + (end[0] - start[0]) * progress;
-      const y = start[1] + (end[1] - start[1]) * progress;
-      const z = start[2] + (end[2] - start[2]) * progress + Math.sin(progress * Math.PI) * 0.3;
+    for (let ci = 0; ci < connections.length; ci++) {
+      const conn = connections[ci];
+      const fromPos = conn.from >= 0 ? brainPositions[conn.from] : [0, 0, 0] as [number, number, number];
+      const toPos = conn.to >= 0 ? brainPositions[conn.to] : [0, 0, 0] as [number, number, number];
+      const isActiveConn = conn.from >= 0 && conn.to >= 0
+        ? activeBrains.includes(BRAIN_IDS[conn.from]) || activeBrains.includes(BRAIN_IDS[conn.to])
+        : conn.from >= 0
+          ? activeBrains.includes(BRAIN_IDS[conn.from])
+          : true;
 
-      dummy.position.set(x, y, z);
-      dummy.scale.setScalar(0.03 + 0.02 * Math.sin(t * 3 + i));
-      dummy.updateMatrix();
-      particlesRef.current.setMatrixAt(i, dummy.matrix);
+      for (let i = 0; i < TOTAL_PARTICLES_PER_CONN; i++) {
+        if (isActiveConn) {
+          const progress = ((t * 0.5 + i / TOTAL_PARTICLES_PER_CONN) % 1);
+          const x = fromPos[0] + (toPos[0] - fromPos[0]) * progress;
+          const y = fromPos[1] + (toPos[1] - fromPos[1]) * progress + Math.sin(progress * Math.PI) * 0.3;
+          const z = fromPos[2] + (toPos[2] - fromPos[2]) * progress;
+          dummy.position.set(x, y, z);
+          dummy.scale.setScalar(0.04 + 0.02 * Math.sin(t * 3 + i));
+        } else {
+          dummy.position.set(0, 0, -100); // Hide inactive particles far away
+          dummy.scale.setScalar(0.001);
+        }
+        dummy.updateMatrix();
+        instRef.current.setMatrixAt(idx, dummy.matrix);
+        idx++;
+      }
     }
-    particlesRef.current.instanceMatrix.needsUpdate = true;
+    instRef.current.instanceMatrix.needsUpdate = true;
   });
 
-  const midPoint: [number, number, number] = useMemo(() => [
-    (start[0] + end[0]) / 2,
-    (start[1] + end[1]) / 2 + 0.3,
-    (start[2] + end[2]) / 2,
-  ], [start, end]);
-
-  const curvePoints = useMemo(() => {
-    const curve = new THREE.QuadraticBezierCurve3(
-      new THREE.Vector3(...start),
-      new THREE.Vector3(...midPoint),
-      new THREE.Vector3(...end),
-    );
-    return curve.getPoints(30).map(p => [p.x, p.y, p.z] as [number, number, number]);
-  }, [start, end, midPoint]);
-
   return (
-    <group>
-      {/* Connection line */}
-      <Line
-        points={curvePoints}
-        color={active ? color1 : '#1a2a3a'}
-        lineWidth={active ? 2 : 0.5}
-        transparent
-        opacity={active ? 0.6 : 0.15}
-      />
-
-      {/* Flowing particles */}
-      {active && (
-        <instancedMesh ref={particlesRef} args={[undefined, undefined, particleCount]}>
-          <sphereGeometry args={[0.04, 6, 6]} />
-          <meshBasicMaterial color={color1} transparent opacity={0.8} />
-        </instancedMesh>
-      )}
-    </group>
+    <instancedMesh ref={instRef} args={[undefined, undefined, totalParticles]}>
+      <sphereGeometry args={[0.04, 6, 6]} />
+      <meshBasicMaterial color="#00e5ff" transparent opacity={0.7} />
+    </instancedMesh>
   );
 }
 
@@ -297,6 +285,11 @@ function BrainScene({ activeBrains, brainConfidences, onBrainClick, vitality }: 
     });
   }, [activeBrains]);
 
+  // Brain positions as array for instanced particles
+  const brainPositions = useMemo(() =>
+    BRAIN_IDS.map((_, i) => getBrainPosition(i)),
+  []);
+
   // Connections: each brain connects to center + neighbors
   const connections = useMemo(() => {
     const conns: Array<{ from: number; to: number }> = [];
@@ -314,6 +307,31 @@ function BrainScene({ activeBrains, brainConfidences, onBrainClick, vitality }: 
     conns.push({ from: 2, to: 4 });
     return conns;
   }, []);
+
+  // Pre-compute connection lines (static geometry)
+  const connectionLines = useMemo(() => {
+    return connections.map((conn) => {
+      const fromPos = conn.from >= 0 ? brainPositions[conn.from] : [0, 0, 0] as [number, number, number];
+      const toPos = conn.to >= 0 ? brainPositions[conn.to] : [0, 0, 0] as [number, number, number];
+      const midPoint: [number, number, number] = [
+        (fromPos[0] + toPos[0]) / 2,
+        (fromPos[1] + toPos[1]) / 2 + 0.3,
+        (fromPos[2] + toPos[2]) / 2,
+      ];
+      const curve = new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(...fromPos),
+        new THREE.Vector3(...midPoint),
+        new THREE.Vector3(...toPos),
+      );
+      const points = curve.getPoints(20).map(p => [p.x, p.y, p.z] as [number, number, number]);
+      const isActiveConn = conn.from >= 0 && conn.to >= 0
+        ? activeBrains.includes(BRAIN_IDS[conn.from]) || activeBrains.includes(BRAIN_IDS[conn.to])
+        : conn.from >= 0
+          ? activeBrains.includes(BRAIN_IDS[conn.from])
+          : true;
+      return { points, active: isActiveConn, fromId: conn.from, toId: conn.to };
+    });
+  }, [connections, brainPositions, activeBrains]);
 
   return (
     <>
@@ -341,30 +359,24 @@ function BrainScene({ activeBrains, brainConfidences, onBrainClick, vitality }: 
           );
         })}
 
-        {/* Synapse connections */}
-        {connections.map((conn, i) => {
-          const fromPos = conn.from >= 0 ? getBrainPosition(conn.from) : [0, 0, 0] as [number, number, number];
-          const toPos = conn.to >= 0 ? getBrainPosition(conn.to) : [0, 0, 0] as [number, number, number];
-          const fromId = conn.from >= 0 ? BRAIN_IDS[conn.from] : 'center';
-          const toId = conn.to >= 0 ? BRAIN_IDS[conn.to] : 'center';
+        {/* Connection lines (lightweight) */}
+        {connectionLines.map((line, i) => (
+          <Line
+            key={`line-${i}`}
+            points={line.points}
+            color={line.active ? (BRAIN_COLORS[BRAIN_IDS[line.fromId]] || '#0d7bb5') : '#1a2a3a'}
+            lineWidth={line.active ? 1.5 : 0.3}
+            transparent
+            opacity={line.active ? 0.5 : 0.1}
+          />
+        ))}
 
-          const isActiveConn = conn.from >= 0 && conn.to >= 0
-            ? activeBrains.includes(BRAIN_IDS[conn.from]) || activeBrains.includes(BRAIN_IDS[conn.to])
-            : conn.from >= 0
-              ? activeBrains.includes(BRAIN_IDS[conn.from])
-              : true;
-
-          return (
-            <SynapsePath
-              key={`syn-${i}`}
-              start={fromPos}
-              end={toPos}
-              active={isActiveConn}
-              color1={BRAIN_COLORS[fromId] || '#0d7bb5'}
-              color2={BRAIN_COLORS[toId] || '#0d7bb5'}
-            />
-          );
-        })}
+        {/* Instanced particles for ALL connections — high performance */}
+        <AllSynapseParticles
+          connections={connections}
+          activeBrains={activeBrains}
+          brainPositions={brainPositions}
+        />
       </group>
     </>
   );

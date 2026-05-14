@@ -17,6 +17,7 @@ export type SuperMindIntent =
   | 'terminal'
   | 'brain.state'
   | 'conversations.search'
+  | 'update.pull'
   | 'default';
 
 export interface SuperMindRoute {
@@ -265,6 +266,25 @@ const INTENT_RULES: IntentRule[] = [
     ],
     keywords: ['محادثات', 'conversations', 'سجل'],
     priority: 55,
+  },
+  {
+    intent: 'update.pull',
+    screenComponent: 'HealingPanel',
+    apiEndpoint: '/api/update/pull',
+    animation: 'pulseIn',
+    soundEvent: 'brain.activate',
+    activatedBrains: ['neural', 'causal', 'symbolic'],
+    labelAr: 'تحديث ذاتي',
+    labelEn: 'Self Update',
+    icon: '🔄',
+    patterns: [
+      /تحديث|update|سحب التحديثات|pull updates/i,
+      /جيت هب|github|git/i,
+      /حدث نفسك|self.update|auto.update/i,
+      /اسحب التحديثات|pull changes/i,
+    ],
+    keywords: ['تحديث', 'سحب', 'github', 'git', 'update', 'pull', 'حدث نفسك'],
+    priority: 85,
   },
 ];
 

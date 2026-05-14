@@ -181,3 +181,56 @@
 }
 
 select option { background: #0d0d1a; color: #c8d0e0; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   SuperMind Responsive Design — العقل الخارق تصميم متجاوب
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Tablet: 768px-1024px — Stack chat + context, hide brain panel behind toggle */
+@media (max-width: 1024px) {
+  .supermind-panels {
+    flex-direction: row !important;
+  }
+  .supermind-chat-panel {
+    width: 40% !important;
+    min-width: 260px !important;
+  }
+  .supermind-context-panel {
+    width: 60% !important;
+  }
+  .supermind-brain-panel {
+    display: none !important;
+  }
+}
+
+/* Mobile: <768px — Single column, tabs for switching */
+@media (max-width: 768px) {
+  .supermind-panels {
+    flex-direction: column !important;
+  }
+  .supermind-chat-panel {
+    width: 100% !important;
+    min-width: unset !important;
+    max-width: unset !important;
+    height: 45vh !important;
+  }
+  .supermind-context-panel {
+    width: 100% !important;
+    height: 55vh !important;
+    border-left: none !important;
+    border-top: 1px solid rgba(255,255,255,0.08) !important;
+  }
+  .supermind-brain-panel {
+    display: none !important;
+  }
+}
+
+/* Small Mobile: <480px */
+@media (max-width: 480px) {
+  .supermind-chat-panel {
+    height: 50vh !important;
+  }
+  .supermind-context-panel {
+    height: 50vh !important;
+  }
+}
