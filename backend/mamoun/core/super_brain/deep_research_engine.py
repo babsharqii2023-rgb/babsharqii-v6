@@ -1,18 +1,20 @@
 """
-Deep Research Engine v57 — Stable, multi-source, verified research.
+Deep Research Engine v58 — Stable, multi-source, verified research.
 
-CRITICAL UPGRADE from v56:
-- v56: HTML scraping unreliable, shallow layers
-- v57: z-ai SDK for search + page_reader for content extraction
-- Cross-source verification: compare claims across multiple sources
-- LLM-powered analysis: summarize, detect bias, find contradictions
-- Depth levels: quick/standard/deep with real content extraction
+CRITICAL UPGRADE from v57:
+- v57: z-ai SDK import broken (tried Python import on Node.js module)
+- v58: Uses ZaiSdkWrapper for both web_search and web_reader
+- Cross-source verification with LLM-powered claim checking
+- Better content extraction using z-ai web_reader
+- Depth-aware analysis: more sources and verification for deep mode
+- Improved claim extraction from LLM responses
 - Integrated with MetaCognitionEngine for real performance tracking
 
-v57 — Super Mind العقل الخارق مامون
+v58 — Super Mind العقل الخارق مامون
 """
 
 import time
+import re
 import asyncio
 import logging
 from typing import Any, Optional
@@ -38,6 +40,7 @@ class ResearchSource:
     quality_score: float = 0.0
     extracted_at: float = field(default_factory=time.time)
     extraction_success: bool = True
+    extraction_method: str = "unknown"  # "zai_reader", "fallback_snippet"
 
 
 @dataclass
@@ -72,10 +75,10 @@ class DeepResearchEngine:
 
     Phases:
     1. SEARCH: Find relevant sources using WebSearchClient
-    2. EXTRACT: Read full content from top sources using page_reader
+    2. EXTRACT: Read full content from top sources using z-ai web_reader
     3. ANALYZE: LLM analyzes content, identifies claims
-    4. VERIFY: Cross-reference claims across sources
-    5. SYNTHESIZE: Produce final research report
+    4. VERIFY: Cross-reference claims across sources (LLM-enhanced)
+    5. SYNTHESIZE: Produce final research report with confidence scores
 
     Usage:
         engine = DeepResearchEngine(search_client=search, llm_client=llm)
@@ -95,12 +98,27 @@ class DeepResearchEngine:
         self._meta_cognition = meta_cognition
         self._neural_bus = neural_bus
         self._research_count = 0
+        self._zai_wrapper = None  # Lazy init for content extraction
 
     def set_search_client(self, client):
         self._search_client = client
 
     def set_llm_client(self, client):
         self._llm_client = client
+
+    def _get_zai_wrapper(self):
+        """Lazy-load the z-ai SDK wrapper for web_reader."""
+        if self._zai_wrapper is None:
+            try:
+                from ..shared.zai_sdk_wrapper import get_zai_wrapper
+                self._zai_wrapper = get_zai_wrapper()
+            except ImportError:
+                try:
+                    from shared.zai_sdk_wrapper import get_zai_wrapper
+                    self._zai_wrapper = get_zai_wrapper()
+                except ImportError:
+                    logger.warning("ZaiSdkWrapper not available — content extraction limited")
+        return self._zai_wrapper
 
     # ── Phase 1: Search ──────────────────────────────────────────────────
     async def _search_sources(self, query: str, depth: ResearchDepth) -> list[dict]:
@@ -124,7 +142,7 @@ class DeepResearchEngine:
 
     # ── Phase 2: Extract Content ─────────────────────────────────────────
     async def _extract_content(self, sources: list[dict], max_pages: int) -> list[ResearchSource]:
-        """Extract full content from source pages using z-ai page_reader."""
+        """Extract full content from source pages using z-ai web_reader."""
         extracted = []
         urls_to_extract = sources[:max_pages]
 
@@ -133,47 +151,49 @@ class DeepResearchEngine:
             if not url:
                 continue
 
-            try:
-                # Try z-ai page_reader
-                import importlib
-                zai_module = importlib.import_module("z-ai-web-dev-sdk")
-                ZAI = zai_module.default if hasattr(zai_module, 'default') else zai_module.ZAI
-                zai = await ZAI.create()
+            # Try z-ai web_reader
+            wrapper = self._get_zai_wrapper()
+            content = ""
+            extraction_method = "fallback_snippet"
+            extraction_success = False
 
-                result = await zai.functions.invoke("page_reader", {"url": url})
+            if wrapper:
+                try:
+                    reader_result = await wrapper.web_reader(url)
+                    if reader_result.success and reader_result.text:
+                        content = reader_result.text
+                        extraction_method = "zai_reader"
+                        extraction_success = True
+                        logger.debug(f"Extracted content from {url}: {len(content)} chars")
+                    elif reader_result.html:
+                        # Fallback: strip HTML
+                        content = re.sub(r'<[^>]+>', ' ', reader_result.html)
+                        content = re.sub(r'\s+', ' ', content).strip()
+                        if content:
+                            extraction_method = "zai_reader_html_stripped"
+                            extraction_success = True
+                except Exception as e:
+                    logger.warning(f"z-ai web_reader failed for {url}: {e}")
 
-                content = ""
-                if hasattr(result, 'data'):
-                    content = result.data.get("html", "")
-                    # Strip HTML to get text
-                    import re
-                    content = re.sub(r'<[^>]+>', ' ', content)
-                    content = re.sub(r'\s+', ' ', content).strip()
-                elif isinstance(result, dict):
-                    content = result.get("html", "")
-                    import re
-                    content = re.sub(r'<[^>]+>', ' ', content)
-                    content = re.sub(r'\s+', ' ', content).strip()
+            # If extraction failed, use snippet
+            if not content:
+                content = source.get("snippet", "")
+                extraction_success = bool(content)
+                extraction_method = "fallback_snippet"
 
-                extracted.append(ResearchSource(
-                    url=url,
-                    title=source.get("title", ""),
-                    content=content[:5000],  # Limit content length
-                    snippet=source.get("snippet", ""),
-                    quality_score=source.get("quality_score", 0.0),
-                    extraction_success=bool(content),
-                ))
+            extracted.append(ResearchSource(
+                url=url,
+                title=source.get("title", ""),
+                content=content[:8000],  # Limit content length
+                snippet=source.get("snippet", ""),
+                quality_score=source.get("quality_score", 0.0),
+                extraction_success=extraction_success,
+                extraction_method=extraction_method,
+            ))
 
-            except Exception as e:
-                logger.warning(f"Failed to extract content from {url}: {e}")
-                extracted.append(ResearchSource(
-                    url=url,
-                    title=source.get("title", ""),
-                    content=source.get("snippet", ""),
-                    snippet=source.get("snippet", ""),
-                    quality_score=source.get("quality_score", 0.0),
-                    extraction_success=False,
-                ))
+        # Log extraction stats
+        zai_count = sum(1 for s in extracted if s.extraction_method.startswith("zai_reader"))
+        logger.info(f"Content extraction: {zai_count}/{len(extracted)} via z-ai reader")
 
         return extracted
 
@@ -189,7 +209,7 @@ class DeepResearchEngine:
             if s.extraction_success and s.content:
                 context_parts.append(f"Source: {s.title} ({s.url})\n{s.content[:2000]}\n")
 
-        context = "\n---\n".join(context_parts[:5])  # Limit context size
+        context = "\n---\n".join(context_parts[:5])
 
         if not context:
             context = "\n".join(s.snippet for s in sources if s.snippet)
@@ -199,10 +219,10 @@ class DeepResearchEngine:
                 messages=[
                     {"role": "system", "content": """You are a research analyst. Analyze the provided sources and:
 1. Write a comprehensive summary
-2. List key findings (each as a separate point)
-3. Identify any claims that need verification
-4. Note any contradictions between sources
-Be thorough and cite specific sources."""},
+2. List key findings (each as a separate point, prefixed with "FINDING:")
+3. Identify any verifiable claims (prefixed with "CLAIM:")
+4. Note any contradictions between sources (prefixed with "CONTRADICTION:")
+Be thorough and cite specific sources by URL when possible."""},
                     {"role": "user", "content": f"Research query: {query}\n\nSources:\n{context}\n\nProvide your analysis."}
                 ],
                 preferred_order=["deepseek", "gemini", "glm"],
@@ -213,6 +233,7 @@ Be thorough and cite specific sources."""},
                     "summary": response.content,
                     "claims": self._extract_claims(response.content),
                     "key_findings": self._extract_findings(response.content),
+                    "contradictions_text": self._extract_contradictions(response.content),
                 }
 
         except Exception as e:
@@ -225,7 +246,12 @@ Be thorough and cite specific sources."""},
         claims = []
         for line in text.split("\n"):
             line = line.strip()
-            if any(kw in line.lower() for kw in ["claim", "states", "according to", "asserts", "reports"]):
+            # Look for CLAIM: prefix or claim-related keywords
+            if line.startswith("CLAIM:"):
+                clean = line[6:].strip()
+                if clean:
+                    claims.append(clean)
+            elif any(kw in line.lower() for kw in ["claim:", "states that", "according to", "asserts that", "reports that"]):
                 clean = line.lstrip("-*•0123456789. ").strip()
                 if clean:
                     claims.append(clean)
@@ -234,54 +260,117 @@ Be thorough and cite specific sources."""},
     def _extract_findings(self, text: str) -> list[str]:
         """Extract key findings from analysis."""
         findings = []
-        in_findings = False
         for line in text.split("\n"):
             line = line.strip()
-            if "key finding" in line.lower() or "finding" in line.lower():
-                in_findings = True
-                continue
-            if in_findings and line.startswith(("-", "*", "•")):
-                clean = line.lstrip("-*• ").strip()
+            if line.startswith("FINDING:"):
+                clean = line[8:].strip()
                 if clean:
                     findings.append(clean)
-            elif in_findings and line and not line.startswith(("-", "*", "•")):
-                in_findings = False
+            elif "key finding" in line.lower():
+                # Also capture lines under "Key Findings" section
+                continue
+        # Also try to extract numbered/bullet findings
+        if not findings:
+            in_findings = False
+            for line in text.split("\n"):
+                stripped = line.strip()
+                if "finding" in stripped.lower() and not stripped.startswith(("-", "*", "•")):
+                    in_findings = True
+                    continue
+                if in_findings and stripped.startswith(("-", "*", "•")):
+                    clean = stripped.lstrip("-*• ").strip()
+                    if clean:
+                        findings.append(clean)
+                elif in_findings and stripped and not stripped.startswith(("-", "*", "•")):
+                    in_findings = False
         return findings[:10]
+
+    def _extract_contradictions(self, text: str) -> list[str]:
+        """Extract contradictions from analysis."""
+        contradictions = []
+        for line in text.split("\n"):
+            line = line.strip()
+            if line.startswith("CONTRADICTION:"):
+                clean = line[14:].strip()
+                if clean:
+                    contradictions.append(clean)
+        return contradictions[:5]
 
     # ── Phase 4: Cross-source Verification ───────────────────────────────
     async def _verify_claims(self, claims: list[str], sources: list[ResearchSource]) -> list[ResearchClaim]:
-        """Verify claims by cross-referencing sources."""
+        """Verify claims by cross-referencing sources using LLM when available."""
+        if not claims:
+            return []
+
         verified_claims = []
 
         for claim in claims[:5]:  # Verify top 5 claims
             supporting = []
             contradicting = []
 
-            # Simple keyword matching (could be enhanced with LLM)
-            claim_keywords = set(claim.lower().split())
+            # Keyword-based preliminary check
+            claim_keywords = set(claim.lower().split()[:15])  # Top 15 keywords
 
             for source in sources:
                 if not source.content:
                     continue
-                source_keywords = set(source.content.lower().split())
-                overlap = claim_keywords & source_keywords
+                source_lower = source.content.lower()
+                overlap = claim_keywords & set(source_lower.split())
+                overlap_ratio = len(overlap) / max(len(claim_keywords), 1)
 
-                if len(overlap) > len(claim_keywords) * 0.3:
-                    # More than 30% keyword overlap = potential support
-                    # Check for negation words
-                    negation = any(w in source.content.lower() for w in
-                                   ["not", "however", "disputed", "contradicted", "false"])
-                    if negation:
+                if overlap_ratio > 0.3:
+                    # Check for negation
+                    negation_words = ["not", "however", "disputed", "contradicted", "false", "incorrect", "debunked"]
+                    # Look for negation near the claim keywords
+                    negation_found = False
+                    for kw in overlap:
+                        kw_pos = source_lower.find(kw)
+                        if kw_pos >= 0:
+                            context_window = source_lower[max(0, kw_pos-50):kw_pos+50]
+                            if any(neg in context_window for neg in negation_words):
+                                negation_found = True
+                                break
+
+                    if negation_found:
                         contradicting.append(source.url)
                     else:
                         supporting.append(source.url)
 
+            # LLM-enhanced verification if we have both supporting and contradicting
+            verification = "unverified"
             if supporting and contradicting:
                 verification = "disputed"
             elif supporting:
                 verification = "verified"
-            else:
-                verification = "unverified"
+
+            # LLM cross-check for important claims (deep mode)
+            if self._llm_client and len(supporting) >= 2:
+                try:
+                    source_texts = []
+                    for s in sources[:3]:
+                        if s.content:
+                            source_texts.append(f"Source ({s.url}): {s.content[:500]}")
+
+                    llm_response = await self._llm_client.chat_with_fallback(
+                        messages=[
+                            {"role": "system", "content": "You are a fact-checker. Verify if the claim is supported by the sources. Reply SUPPORTED, CONTRADICTED, or UNCLEAR."},
+                            {"role": "user", "content": f"Claim: {claim}\n\nSources:\n{chr(10).join(source_texts)}\n\nIs the claim supported, contradicted, or unclear?"}
+                        ],
+                        preferred_order=["deepseek", "glm"],
+                    )
+
+                    if llm_response.success:
+                        answer = llm_response.content.lower()
+                        if "supported" in answer and "contradicted" not in answer:
+                            verification = "verified"
+                        elif "contradicted" in answer:
+                            verification = "disputed"
+                            if not contradicting:
+                                contradicting.append("llm_verification")
+                        elif "unclear" in answer:
+                            verification = "unverified"
+                except Exception as e:
+                    logger.warning(f"LLM verification failed for claim: {e}")
 
             confidence = len(supporting) / max(len(sources), 1)
 
@@ -301,22 +390,31 @@ Be thorough and cite specific sources."""},
                                   sources: list[ResearchSource]) -> dict:
         """Synthesize final research report."""
         contradictions = [c.claim for c in claims if c.verification == "disputed"]
+        # Also add contradictions from LLM analysis
+        contradictions.extend(analysis.get("contradictions_text", []))
+
         key_findings = analysis.get("key_findings", [])
 
-        # If no key findings extracted, generate from claims
         if not key_findings:
             key_findings = [c.claim for c in claims if c.verification == "verified"][:5]
 
         # Overall confidence
         verified_count = sum(1 for c in claims if c.verification == "verified")
         total_claims = max(len(claims), 1)
-        confidence = verified_count / total_claims
+        claim_confidence = verified_count / total_claims
+
+        # Source quality confidence
+        successful_extractions = sum(1 for s in sources if s.extraction_success)
+        source_confidence = successful_extractions / max(len(sources), 1)
+
+        # Combined confidence
+        overall_confidence = 0.6 * claim_confidence + 0.4 * source_confidence if claims else source_confidence
 
         return {
             "summary": analysis.get("summary", ""),
-            "key_findings": key_findings,
-            "contradictions": contradictions,
-            "confidence": confidence,
+            "key_findings": key_findings[:10],
+            "contradictions": contradictions[:5],
+            "confidence": round(overall_confidence, 3),
         }
 
     # ── Main research method ─────────────────────────────────────────────
@@ -380,20 +478,24 @@ Be thorough and cite specific sources."""},
 
         # Record in meta-cognition
         if self._meta_cognition:
-            from .meta_cognition_engine import OutcomeRecord
-            self._meta_cognition.record_outcome(OutcomeRecord(
-                component="deep_research_engine",
-                operation="research",
-                success=result.sources_searched > 0,
-                quality_score=result.confidence,
-                predicted_quality=self._meta_cognition.predict_quality("deep_research_engine"),
-                latency_ms=total_latency,
-                metadata={
-                    "depth": depth,
-                    "sources_found": len(raw_sources),
-                    "content_extracted": result.content_extracted,
-                },
-            ))
+            try:
+                from .meta_cognition_engine import OutcomeRecord
+                self._meta_cognition.record_outcome(OutcomeRecord(
+                    component="deep_research_engine",
+                    operation="research",
+                    success=result.sources_searched > 0,
+                    quality_score=result.confidence,
+                    predicted_quality=self._meta_cognition.predict_quality("deep_research_engine"),
+                    latency_ms=total_latency,
+                    metadata={
+                        "depth": depth,
+                        "sources_found": len(raw_sources),
+                        "content_extracted": result.content_extracted,
+                        "claims_verified": len(claims),
+                    },
+                ))
+            except ImportError:
+                pass
 
         return result
 

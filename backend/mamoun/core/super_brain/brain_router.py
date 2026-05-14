@@ -1,14 +1,15 @@
 """
-Brain Router v57 — TRUE cognitive diversity with different providers.
+Brain Router v58 — TRUE cognitive diversity with personality-driven prompts.
 
-CRITICAL UPGRADE from v56:
-- v56: All 5 brains used the SAME API key = fake diversity
-- v57: Each brain uses a DIFFERENT provider (GLM, Gemini, DeepSeek, Z-AI, Critic)
-- Each brain has a DIFFERENT personality, temperature, and system prompt
-- Real diversity = genuinely different perspectives on the same query
+CRITICAL UPGRADE from v57:
+- v57: Brain personalities were defined but NOT injected into system prompts
+- v58: Each brain gets its own system prompt matching its personality
+- Improved quality scoring: reasoning depth, specificity, actionability
+- Performance history tracking per brain
+- Adaptive weight adjustment based on real performance
 - Integrated with MetaCognitionEngine for performance tracking
 
-v57 — Super Mind العقل الخارق مامون
+v58 — Super Mind العقل الخارق مامون
 """
 
 import time
@@ -29,14 +30,45 @@ class BrainPersonality(str, Enum):
     CRITIC = "critic"          # DeepSeek low-temp — finding flaws
 
 
+# ── Personality System Prompts ───────────────────────────────────────────
+PERSONALITY_PROMPTS = {
+    BrainPersonality.ANALYST: (
+        "أنت المحلل — فكر بشكل منطقي ومنهجي. "
+        "ركز على الأدلة والبيانات والاستدلال الصارم. "
+        "قدم تحليلاً مفصلاً مع مراجع للأدلة. "
+        "تجنب التعميمات واعتمد على الحقائق المحددة."
+    ),
+    BrainPersonality.CREATIVE: (
+        "أنت المبدع — فكر خارج الصندوق وابحث عن حلول غير تقليدية. "
+        "اقترح أفكاراً مبتكرة وربط بين مفاهيم بعيدة. "
+        "لا تتقيد بالطرق المعتادة — ابحث عن المقاربات الجديدة."
+    ),
+    BrainPersonality.SYNTHESIZER: (
+        "أنت المُركّب — مهمتك تجميع الآراء المختلفة وإيجاد نقاط الاتفاق والخلاف. "
+        "ابحث عن القواسم المشتركة واقترح حلولاً توفيقية. "
+        "حلل كيف يمكن دمج الأفكار المتنوعة في إطار متكامل."
+    ),
+    BrainPersonality.PRAGMATIST: (
+        "أنت العملي — ركز على التكلفة والجدوى والتطبيق العملي. "
+        "قيّم كل فكرة من حيث: هل يمكن تنفيذها؟ ما التكلفة؟ ما العائد؟ "
+        "اقترح الخطوات العملية المحددة والجدول الزمني."
+    ),
+    BrainPersonality.CRITIC: (
+        "أنت الناقد — مهمتك إيجاد الثغرات والأخطاء والمخاطر. "
+        "كن صارماً في تقييم الحجج والاستنتاجات. "
+        "حدد نقاط الضعف والافتراضات غير المبررة والمخاطر المحتملة."
+    ),
+}
+
+
 @dataclass
 class BrainConfig:
     """Configuration for a single brain."""
     name: str
-    provider: str  # Maps to MultiProviderLLMClient provider
+    provider: str
     personality: BrainPersonality
     temperature: float
-    weight: float = 1.0  # Weight in voting (adjusted by performance)
+    weight: float = 1.0
     enabled: bool = True
 
 
@@ -59,7 +91,7 @@ class RoutingResult:
     query: str
     responses: list[BrainResponse]
     best_response: Optional[BrainResponse]
-    consensus_level: float  # 0-1, how much brains agree
+    consensus_level: float
     routing_strategy: str
     total_latency_ms: float
 
@@ -99,7 +131,7 @@ DEFAULT_BRAINS = [
         provider="critic",
         personality=BrainPersonality.CRITIC,
         temperature=0.0,
-        weight=0.8,  # Slightly lower weight — critic should influence but not dominate
+        weight=0.8,
     ),
 ]
 
@@ -108,9 +140,9 @@ class BrainRouter:
     """
     Routes queries to multiple brains with TRUE diversity.
 
-    Each brain uses a DIFFERENT LLM provider with a DIFFERENT personality.
-    This ensures genuinely different perspectives — not fake diversity from
-    the same API key with different labels.
+    Each brain uses a DIFFERENT LLM provider with a DIFFERENT personality
+    and a DIFFERENT system prompt. This ensures genuinely different
+    perspectives — not fake diversity from the same API key.
 
     Routing strategies:
     - "parallel": All brains answer simultaneously, best is selected
@@ -130,19 +162,18 @@ class BrainRouter:
         self._neural_bus = neural_bus
         self._brains = brains or DEFAULT_BRAINS
         self._performance_history: dict[str, list[float]] = {}
+        self._call_count = 0
 
     def set_llm_client(self, client):
-        """Inject the multi-provider LLM client."""
         self._llm_client = client
 
     def set_meta_cognition(self, engine):
-        """Inject the meta-cognition engine."""
         self._meta_cognition = engine
 
     def _get_available_brains(self) -> list[BrainConfig]:
         """Get brains that have available providers."""
         if not self._llm_client:
-            return self._brains  # Return all if we can't check
+            return self._brains
 
         available_providers = self._llm_client.available_providers()
         available = []
@@ -150,22 +181,19 @@ class BrainRouter:
         for brain in self._brains:
             if not brain.enabled:
                 continue
-            # Check if this brain's provider is available
             if brain.provider in available_providers:
                 available.append(brain)
             elif brain.provider == "zai":
                 # Z-AI is always available in this environment
                 available.append(brain)
 
-        # If no providers available, use all brains (will fail gracefully)
         return available if available else self._brains
 
     def _classify_complexity(self, query: str) -> str:
         """Classify query complexity to choose routing strategy."""
-        # Simple heuristic — could be enhanced with LLM
         word_count = len(query.split())
-        has_code = any(kw in query.lower() for kw in ["code", "function", "class", "api", "debug"])
-        has_architecture = any(kw in query.lower() for kw in ["design", "architecture", "system", "structure"])
+        has_code = any(kw in query.lower() for kw in ["code", "function", "class", "api", "debug", "خطأ", "كود"])
+        has_architecture = any(kw in query.lower() for kw in ["design", "architecture", "system", "structure", "تصميم", "نظام"])
 
         if has_architecture or word_count > 50:
             return "complex"
@@ -176,7 +204,7 @@ class BrainRouter:
 
     async def _query_brain(self, brain: BrainConfig, query: str,
                            context: str = "") -> BrainResponse:
-        """Send a query to a single brain."""
+        """Send a query to a single brain with personality-driven system prompt."""
         if not self._llm_client:
             return BrainResponse(
                 brain_name=brain.name,
@@ -189,10 +217,13 @@ class BrainRouter:
 
         start = time.time()
 
-        # Build messages with brain's personality
-        messages = []
+        # Build messages with brain's personality system prompt
+        system_prompt = PERSONALITY_PROMPTS.get(brain.personality, "")
+        messages = [{"role": "system", "content": system_prompt}]
+
         if context:
-            messages.append({"role": "system", "content": f"Previous analysis context:\n{context}"})
+            messages.append({"role": "assistant", "content": f"Previous analysis context:\n{context}"})
+
         messages.append({"role": "user", "content": query})
 
         response = await self._llm_client.chat(
@@ -203,24 +234,69 @@ class BrainRouter:
 
         latency = (time.time() - start) * 1000
 
-        # Compute quality score
+        # Compute quality score — improved from v57
         quality = 0.0
         if response.success:
-            # Simple quality metrics
-            content_len = len(response.content)
+            content = response.content
+            content_len = len(content)
+
+            # Length-based quality
             if content_len > 100:
-                quality += 0.3
+                quality += 0.15
             if content_len > 300:
-                quality += 0.2
-            if any(kw in response.content.lower() for kw in ["because", "therefore", "however", "analysis"]):
-                quality += 0.2  # Has reasoning
-            if any(kw in response.content.lower() for kw in ["example", "for instance", "such as"]):
-                quality += 0.1  # Has examples
-            if any(kw in response.content.lower() for kw in ["recommend", "suggest", "should"]):
-                quality += 0.1  # Has recommendations
+                quality += 0.1
+            if content_len > 500:
+                quality += 0.05
+
+            content_lower = content.lower()
+
+            # Reasoning depth
+            reasoning_keywords = ["because", "therefore", "however", "analysis", "لأن", "لذلك", "لكن", "تحليل"]
+            if any(kw in content_lower for kw in reasoning_keywords):
+                quality += 0.15
+
+            # Specificity
+            specific_keywords = ["example", "for instance", "such as", "specifically", "مثال", "مثل", "تحديداً"]
+            if any(kw in content_lower for kw in specific_keywords):
+                quality += 0.1
+
+            # Actionability
+            action_keywords = ["recommend", "suggest", "should", "step", "مقترح", "أنصح", "خطوة"]
+            if any(kw in content_lower for kw in action_keywords):
+                quality += 0.1
+
+            # Structure (numbered points, sections)
+            if any(line.strip().startswith(("1.", "2.", "3.", "- ")) for line in content.split("\n")):
+                quality += 0.1
+
+            # Evidence/reference
+            evidence_keywords = ["according to", "research", "data shows", "study", "وفقاً", "بحث", "بيانات"]
+            if any(kw in content_lower for kw in evidence_keywords):
+                quality += 0.1
+
+            # Critical thinking (for critic personality)
+            if brain.personality == BrainPersonality.CRITIC:
+                risk_keywords = ["risk", "danger", "flaw", "vulnerability", "مخاطر", "ثغرة", "خطر"]
+                if any(kw in content_lower for kw in risk_keywords):
+                    quality += 0.15
+
             quality = min(1.0, quality)
         else:
             quality = 0.0
+
+        # Update performance history
+        brain_key = brain.name
+        if brain_key not in self._performance_history:
+            self._performance_history[brain_key] = []
+        self._performance_history[brain_key].append(quality)
+        if len(self._performance_history[brain_key]) > 100:
+            self._performance_history[brain_key] = self._performance_history[brain_key][-100:]
+
+        # Adapt weight based on performance
+        history = self._performance_history[brain_key]
+        if len(history) >= 5:
+            recent_avg = sum(history[-10:]) / len(history[-10:])
+            brain.weight = max(0.3, min(1.5, recent_avg * 1.2))
 
         return BrainResponse(
             brain_name=brain.name,
@@ -234,10 +310,7 @@ class BrainRouter:
         )
 
     def _compute_consensus(self, responses: list[BrainResponse]) -> float:
-        """
-        Compute consensus level among brain responses.
-        Higher = more agreement.
-        """
+        """Compute consensus level among brain responses using keyword overlap."""
         if len(responses) < 2:
             return 1.0
 
@@ -245,20 +318,19 @@ class BrainRouter:
         if len(successful) < 2:
             return 0.0
 
-        # Simple keyword overlap consensus
+        stop_words = {"the", "a", "an", "is", "are", "was", "were", "be", "been",
+                     "to", "of", "and", "in", "that", "it", "for", "on", "with", "as",
+                     "هو", "هي", "في", "من", "على", "إلى", "أن", "هذا", "هذه"}
+
         all_keywords = []
         for r in successful:
             words = set(r.content.lower().split())
-            # Filter common words
-            stop_words = {"the", "a", "an", "is", "are", "was", "were", "be", "been",
-                         "to", "of", "and", "in", "that", "it", "for", "on", "with", "as"}
             keywords = words - stop_words
             all_keywords.append(keywords)
 
         if not all_keywords:
             return 0.0
 
-        # Average pairwise Jaccard similarity
         similarities = []
         for i in range(len(all_keywords)):
             for j in range(i + 1, len(all_keywords)):
@@ -273,7 +345,6 @@ class BrainRouter:
         """Select the best response based on quality and performance history."""
         successful = [r for r in responses if r.success]
         if not successful:
-            # Return the first response even if failed
             return responses[0] if responses else None
 
         if len(successful) == 1:
@@ -290,7 +361,12 @@ class BrainRouter:
             history = self._performance_history.get(r.brain_name, [])
             if history:
                 avg_perf = sum(history[-20:]) / len(history[-20:])
-                score += avg_perf * 0.3  # Weight historical performance
+                score += avg_perf * 0.2
+
+            # Latency bonus (faster = slightly better)
+            if r.latency_ms > 0:
+                latency_score = max(0, 1.0 - (r.latency_ms / 10000))  # Normalize
+                score += latency_score * 0.05
 
             if score > best_score:
                 best_score = score
@@ -300,17 +376,9 @@ class BrainRouter:
 
     # ── Main routing methods ─────────────────────────────────────────────
     async def route(self, query: str, strategy: str = "adaptive") -> RoutingResult:
-        """
-        Route a query through multiple brains.
-
-        Args:
-            query: The question/task to route
-            strategy: "parallel", "sequential", or "adaptive"
-
-        Returns:
-            RoutingResult with all responses and the best one
-        """
+        """Route a query through multiple brains."""
         start = time.time()
+        self._call_count += 1
 
         if strategy == "adaptive":
             complexity = self._classify_complexity(query)
@@ -342,20 +410,24 @@ class BrainRouter:
 
         # Record in meta-cognition
         if self._meta_cognition:
-            from .meta_cognition_engine import OutcomeRecord
-            self._meta_cognition.record_outcome(OutcomeRecord(
-                component="brain_router",
-                operation=f"route_{strategy}",
-                success=best is not None and best.success,
-                quality_score=best.quality_score if best and best.success else 0.0,
-                predicted_quality=self._meta_cognition.predict_quality("brain_router"),
-                latency_ms=total_latency,
-                metadata={
-                    "brains_used": len(responses),
-                    "successful_brains": sum(1 for r in responses if r.success),
-                    "consensus": consensus,
-                },
-            ))
+            try:
+                from .meta_cognition_engine import OutcomeRecord
+                self._meta_cognition.record_outcome(OutcomeRecord(
+                    component="brain_router",
+                    operation=f"route_{strategy}",
+                    success=best is not None and best.success,
+                    quality_score=best.quality_score if best and best.success else 0.0,
+                    predicted_quality=self._meta_cognition.predict_quality("brain_router"),
+                    latency_ms=total_latency,
+                    metadata={
+                        "brains_used": len(responses),
+                        "successful_brains": sum(1 for r in responses if r.success),
+                        "consensus": consensus,
+                        "strategy": strategy,
+                    },
+                ))
+            except ImportError:
+                pass
 
         return result
 
@@ -390,7 +462,6 @@ class BrainRouter:
             responses.append(response)
 
             if response.success:
-                # Add this response to context for the next brain
                 context += f"\n{brain.name} ({brain.personality.value}): {response.content[:500]}\n"
 
         return responses
@@ -399,13 +470,14 @@ class BrainRouter:
         """Route to a single specific brain/provider."""
         matching = [b for b in self._brains if b.provider == provider]
         if not matching:
-            matching = [self._brains[0]]  # Fallback to first brain
+            matching = [self._brains[0]]
 
         return await self._query_brain(matching[0], query)
 
     def get_stats(self) -> dict:
         """Get router statistics."""
         return {
+            "total_calls": self._call_count,
             "total_brains": len(self._brains),
             "available_brains": len(self._get_available_brains()),
             "performance_history": {

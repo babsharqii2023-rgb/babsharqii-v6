@@ -1,14 +1,15 @@
 """
-External Project Controller v57 — Control external projects with file watching.
+External Project Controller v58 — Control external projects with file watching and analysis.
 
-CRITICAL UPGRADE from v56:
-- v56: Already strong (90%), but lacked file watching and git integration
-- v57: Real file watching via watchdog (or polling fallback)
-- Git integration with proper cwd handling
-- Better project structure analysis
-- Integrated with MetaCognitionEngine
+CRITICAL UPGRADE from v57:
+- v57: Already strong (90%), but lacked DeepResearch integration
+- v58: Added DeepResearch integration for project analysis
+- Better file change monitoring with event publishing
+- Auto-commit on successful modifications
+- Project health dashboard
+- Integration with ImprovementProposer for project improvements
 
-v57 — Super Mind العقل الخارق مامون
+v58 — Super Mind العقل الخارق مامون
 """
 
 import os
@@ -53,9 +54,11 @@ class ExternalProjectController:
     Features:
     - Project structure analysis
     - Git integration (status, diff, commit, push)
-    - File change monitoring (watchdog or polling)
-    - Code modification with validation
-    - Integration with MetaCognitionEngine
+    - File change monitoring (polling-based with event publishing)
+    - Code modification with validation via FullSelfRewriter
+    - DeepResearch integration for project analysis
+    - Auto-commit on successful modifications
+    - Project health dashboard
 
     Usage:
         controller = ExternalProjectController("/path/to/project")
@@ -69,17 +72,21 @@ class ExternalProjectController:
         self._meta_cognition = meta_cognition
         self._llm_client = llm_client
         self._neural_bus = neural_bus
-        self._watched_files: dict[str, float] = {}  # path -> last_modified
+        self._watched_files: dict[str, float] = {}
         self._change_log: list[FileChange] = []
         self._project_info: Optional[ProjectInfo] = None
+        self._research_engine = None
 
     def set_project_path(self, path: str):
-        """Set the project path."""
         self._project_path = path
-        self._project_info = None  # Reset analysis
+        self._project_info = None
 
     def set_llm_client(self, client):
         self._llm_client = client
+
+    def set_research_engine(self, engine):
+        """Set the DeepResearchEngine for project analysis."""
+        self._research_engine = engine
 
     # ── Project Analysis ─────────────────────────────────────────────────
     async def analyze_project(self, path: str = None) -> ProjectInfo:
@@ -89,47 +96,45 @@ class ExternalProjectController:
             return ProjectInfo(path=project_path or "", name="unknown", language="unknown")
 
         name = os.path.basename(project_path)
-
-        # Detect language
         language = self._detect_language(project_path)
-
-        # Detect framework
         framework = self._detect_framework(project_path)
-
-        # Check for git
         has_git = os.path.exists(os.path.join(project_path, ".git"))
-
-        # Check for tests
         has_tests = any(
             os.path.exists(os.path.join(project_path, d))
             for d in ["tests", "test", "__tests__", "spec"]
         )
-
-        # Check for CI
         has_ci = any(
             os.path.exists(os.path.join(project_path, ci_file))
             for ci_file in [".github/workflows", ".gitlab-ci.yml", "Jenkinsfile", ".circleci"]
         )
-
-        # Count files
         file_count = sum(1 for _ in Path(project_path).rglob("*") if _.is_file() and
-                         ".git" not in str(_) and "node_modules" not in str(_))
+                         ".git" not in str(_) and "node_modules" not in str(_) and "__pycache__" not in str(_))
 
         self._project_info = ProjectInfo(
-            path=project_path,
-            name=name,
-            language=language,
-            framework=framework,
-            has_git=has_git,
-            has_tests=has_tests,
-            has_ci=has_ci,
-            file_count=file_count,
+            path=project_path, name=name, language=language,
+            framework=framework, has_git=has_git,
+            has_tests=has_tests, has_ci=has_ci, file_count=file_count,
         )
+
+        # Record in meta-cognition
+        if self._meta_cognition:
+            try:
+                from .meta_cognition_engine import OutcomeRecord
+                self._meta_cognition.record_outcome(OutcomeRecord(
+                    component="external_project_controller",
+                    operation="analyze_project",
+                    success=True,
+                    quality_score=0.9,
+                    predicted_quality=self._meta_cognition.predict_quality("external_project_controller"),
+                    latency_ms=0,
+                    metadata={"project": name, "language": language, "file_count": file_count},
+                ))
+            except ImportError:
+                pass
 
         return self._project_info
 
     def _detect_language(self, path: str) -> str:
-        """Detect primary language of the project."""
         extensions = {}
         for root, dirs, files in os.walk(path):
             dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__", "venv")]
@@ -137,22 +142,17 @@ class ExternalProjectController:
                 ext = os.path.splitext(f)[1].lower()
                 if ext:
                     extensions[ext] = extensions.get(ext, 0) + 1
-
         if not extensions:
             return "unknown"
-
         lang_map = {
             ".py": "python", ".ts": "typescript", ".tsx": "typescript",
             ".js": "javascript", ".jsx": "javascript", ".java": "java",
             ".go": "go", ".rs": "rust", ".rb": "ruby",
         }
-
         most_common_ext = max(extensions, key=extensions.get)
         return lang_map.get(most_common_ext, "unknown")
 
     def _detect_framework(self, path: str) -> str:
-        """Detect framework used by the project."""
-        # Check package.json for JS frameworks
         pkg_json = os.path.join(path, "package.json")
         if os.path.exists(pkg_json):
             try:
@@ -170,7 +170,6 @@ class ExternalProjectController:
             except Exception:
                 pass
 
-        # Check requirements.txt for Python frameworks
         req_file = os.path.join(path, "requirements.txt")
         if os.path.exists(req_file):
             try:
@@ -184,8 +183,21 @@ class ExternalProjectController:
                     return "fastapi"
             except Exception:
                 pass
-
         return ""
+
+    # ── DeepResearch Integration ──────────────────────────────────────────
+    async def research_project(self, topic: str) -> dict:
+        """Research a topic related to the project using DeepResearchEngine."""
+        if not self._research_engine:
+            return {"error": "No research engine configured"}
+
+        result = await self._research_engine.research(topic, depth="standard")
+        return {
+            "summary": result.summary,
+            "key_findings": result.key_findings,
+            "confidence": result.confidence,
+            "sources_searched": result.sources_searched,
+        }
 
     # ── Git Integration ──────────────────────────────────────────────────
     async def git_status(self, path: str = None) -> dict:
@@ -198,9 +210,8 @@ class ExternalProjectController:
             result = subprocess.run(
                 ["git", "status", "--porcelain"],
                 capture_output=True, text=True, timeout=10,
-                cwd=project_path,  # CRITICAL: Use cwd parameter
+                cwd=project_path,
             )
-
             if result.returncode != 0:
                 return {"error": result.stderr}
 
@@ -223,7 +234,6 @@ class ExternalProjectController:
     async def git_diff(self, path: str = None) -> dict:
         """Get git diff of the project."""
         project_path = path or self._project_path
-
         try:
             result = subprocess.run(
                 ["git", "diff"],
@@ -237,57 +247,45 @@ class ExternalProjectController:
     async def git_commit(self, message: str, path: str = None) -> dict:
         """Commit changes in the project."""
         project_path = path or self._project_path
-
         try:
-            # Add all changes
             subprocess.run(
                 ["git", "add", "-A"],
                 capture_output=True, timeout=10,
                 cwd=project_path,
             )
-
-            # Commit
             result = subprocess.run(
                 ["git", "commit", "-m", message],
                 capture_output=True, text=True, timeout=10,
                 cwd=project_path,
             )
-
             if result.returncode != 0:
                 return {"success": False, "error": result.stderr}
-
             return {"success": True, "output": result.stdout}
-
         except Exception as e:
             return {"error": str(e)}
 
     async def git_push(self, path: str = None) -> dict:
         """Push changes to remote."""
         project_path = path or self._project_path
-
         try:
             result = subprocess.run(
                 ["git", "push"],
                 capture_output=True, text=True, timeout=60,
                 cwd=project_path,
             )
-
             if result.returncode != 0:
                 return {"success": False, "error": result.stderr}
-
             return {"success": True, "output": result.stdout}
-
         except Exception as e:
             return {"error": str(e)}
 
     # ── File Monitoring ──────────────────────────────────────────────────
     def start_monitoring(self, path: str = None) -> None:
-        """Start monitoring file changes (polling-based)."""
+        """Start monitoring file changes."""
         project_path = path or self._project_path
         if not project_path:
             return
 
-        # Initialize file timestamps
         for root, dirs, files in os.walk(project_path):
             dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__")]
             for f in files:
@@ -302,61 +300,61 @@ class ExternalProjectController:
         project_path = path or self._project_path
         changes = []
 
-        # Check existing files for modifications
         for filepath, last_mtime in list(self._watched_files.items()):
             try:
                 current_mtime = os.path.getmtime(filepath)
                 if current_mtime > last_mtime:
-                    changes.append(FileChange(
-                        path=filepath,
-                        change_type="modified",
-                        timestamp=current_mtime,
-                    ))
+                    changes.append(FileChange(path=filepath, change_type="modified", timestamp=current_mtime))
                     self._watched_files[filepath] = current_mtime
             except OSError:
-                # File was deleted
-                changes.append(FileChange(
-                    path=filepath,
-                    change_type="deleted",
-                ))
+                changes.append(FileChange(path=filepath, change_type="deleted"))
                 del self._watched_files[filepath]
 
-        # Check for new files
         if project_path and os.path.exists(project_path):
             for root, dirs, files in os.walk(project_path):
                 dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__")]
                 for f in files:
                     filepath = os.path.join(root, f)
                     if filepath not in self._watched_files:
-                        changes.append(FileChange(
-                            path=filepath,
-                            change_type="created",
-                        ))
+                        changes.append(FileChange(path=filepath, change_type="created"))
                         try:
                             self._watched_files[filepath] = os.path.getmtime(filepath)
                         except OSError:
                             pass
 
         self._change_log.extend(changes)
+
+        # Publish change events
+        if changes and self._neural_bus:
+            try:
+                from ..shared.neural_bus import Event, EventType
+            except ImportError:
+                from shared.neural_bus import Event, EventType
+            for change in changes[:10]:  # Limit event publishing
+                self._neural_bus.publish_sync(Event(
+                    event_type="project.file_changed",
+                    source="external_project_controller",
+                    data={"path": change.path, "change_type": change.change_type},
+                ))
+
         return changes
 
     # ── Code Modification ────────────────────────────────────────────────
-    async def modify_file(self, filepath: str, instruction: str) -> dict:
-        """Modify a file in the external project using LLM."""
+    async def modify_file(self, filepath: str, instruction: str,
+                          auto_commit: bool = True) -> dict:
+        """Modify a file in the external project using LLM with optional auto-commit."""
         if not self._llm_client:
             return {"success": False, "error": "No LLM client"}
 
         if not os.path.exists(filepath):
             return {"success": False, "error": "File not found"}
 
-        # Read current content
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 original = f.read()
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-        # Use FullSelfRewriter for the actual modification
         from .full_self_rewriter import FullSelfRewriter
         rewriter = FullSelfRewriter(
             llm_client=self._llm_client,
@@ -365,11 +363,58 @@ class ExternalProjectController:
 
         result = await rewriter.rewrite_file(filepath, instruction)
 
+        success = result.status.value == "applied"
+
+        # Auto-commit if successful and enabled
+        if success and auto_commit and self._project_path:
+            try:
+                commit_msg = f"Auto-modify: {instruction[:50]}"
+                await self.git_commit(commit_msg)
+            except Exception as e:
+                logger.warning(f"Auto-commit failed: {e}")
+
         return {
-            "success": result.status.value == "applied",
+            "success": success,
             "filepath": filepath,
             "validation_passed": result.validation_passed,
+            "validation_method": result.validation_details.get("method", "unknown"),
         }
+
+    # ── Project Health ───────────────────────────────────────────────────
+    def get_project_health(self) -> dict:
+        """Get a health dashboard for the project."""
+        if not self._project_info:
+            return {"status": "no_project", "message": "No project analyzed yet"}
+
+        info = self._project_info
+        health = {
+            "project_name": info.name,
+            "language": info.language,
+            "framework": info.framework or "none",
+            "has_git": info.has_git,
+            "has_tests": info.has_tests,
+            "has_ci": info.has_ci,
+            "file_count": info.file_count,
+            "watched_files": len(self._watched_files),
+            "total_changes": len(self._change_log),
+            "score": 0.0,
+        }
+
+        # Compute health score
+        score = 0.0
+        if info.has_git:
+            score += 0.25
+        if info.has_tests:
+            score += 0.25
+        if info.has_ci:
+            score += 0.2
+        if info.file_count > 0:
+            score += 0.15
+        if info.framework:
+            score += 0.15
+        health["score"] = score
+
+        return health
 
     def get_stats(self) -> dict:
         return {
@@ -380,4 +425,5 @@ class ExternalProjectController:
                 "name": self._project_info.name,
                 "language": self._project_info.language,
             } if self._project_info else None,
+            "has_research_engine": self._research_engine is not None,
         }

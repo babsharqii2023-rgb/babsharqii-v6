@@ -1,25 +1,28 @@
 """
-Web Search Client v57 — Stable, multi-source web search.
+Web Search Client v58 — Stable, multi-source web search with REAL z-ai SDK.
 
-CRITICAL UPGRADE from v56:
-- v56: DuckDuckGo HTML scraping — unreliable, breaks often
-- v57: Three-tier search: z-ai SDK (primary) → DuckDuckGo (fallback) → Cache
-- Proper caching with TTL
-- Rate limiting
-- Result validation and quality scoring
+CRITICAL UPGRADE from v57:
+- v57: Tried to import z-ai SDK as Python module — BROKEN (it's Node.js)
+- v58: Uses ZaiSdkWrapper (Node.js subprocess bridge) for REAL z-ai calls
+- Three-tier search: z-ai SDK (primary) → DuckDuckGo (fallback) → Cache
+- Proper caching with TTL and LRU eviction
+- Rate limiting to avoid API abuse
+- Result quality scoring with relevance matching
+- Deduplication by URL
 - Integrated with MetaCognitionEngine for real performance tracking
 
-v57 — Super Mind العقل الخارق مامون
+v58 — Super Mind العقل الخارق مامون
 """
 
 import time
-import json
+import re
 import hashlib
 import logging
 import asyncio
 from typing import Any, Optional
 from dataclasses import dataclass, field
 from collections import OrderedDict
+from urllib.parse import unquote
 
 import httpx
 
@@ -34,7 +37,7 @@ class SearchResult:
     snippet: str
     source: str  # "zai_sdk", "duckduckgo", "cache"
     rank: int = 0
-    quality_score: float = 0.0  # Computed quality
+    quality_score: float = 0.0
     fetch_time: float = field(default_factory=time.time)
     host_name: str = ""
 
@@ -45,7 +48,7 @@ class SearchResponse:
     query: str
     results: list[SearchResult]
     total_results: int
-    source_used: str  # Which source actually provided results
+    source_used: str
     latency_ms: float
     from_cache: bool = False
     error: Optional[str] = None
@@ -119,8 +122,8 @@ class WebSearchClient:
 
     Search priority:
     1. Cache — if recent results exist, return them
-    2. z-ai SDK — reliable, structured results
-    3. DuckDuckGo — fallback scraping
+    2. z-ai SDK — reliable, structured results (via ZaiSdkWrapper)
+    3. DuckDuckGo — fallback HTML scraping
     4. Return cached results if all sources fail
 
     Usage:
@@ -131,72 +134,103 @@ class WebSearchClient:
     """
 
     def __init__(self, meta_cognition=None, neural_bus=None):
-        self._cache = LRUCache(max_size=500, ttl_seconds=1800)  # 30 min
+        self._cache = LRUCache(max_size=500, ttl_seconds=1800)
         self._rate_limiter = RateLimiter(requests_per_minute=30)
         self._http_client: Optional[httpx.AsyncClient] = None
         self._meta_cognition = meta_cognition
         self._neural_bus = neural_bus
         self._search_count = 0
         self._error_count = 0
+        self._zai_wrapper = None  # Lazy init
+
+    def _get_zai_wrapper(self):
+        """Lazy-load the z-ai SDK wrapper."""
+        if self._zai_wrapper is None:
+            try:
+                from ..shared.zai_sdk_wrapper import get_zai_wrapper
+                self._zai_wrapper = get_zai_wrapper()
+            except ImportError:
+                try:
+                    from shared.zai_sdk_wrapper import get_zai_wrapper
+                    self._zai_wrapper = get_zai_wrapper()
+                except ImportError:
+                    logger.warning("ZaiSdkWrapper not available — z-ai search disabled")
+        return self._zai_wrapper
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         if self._http_client is None or self._http_client.is_closed:
             self._http_client = httpx.AsyncClient(
                 timeout=30.0,
-                headers={"User-Agent": "SuperMind/57.0 (Research Engine)"}
+                headers={"User-Agent": "SuperMind/58.0 (Research Engine)"}
             )
         return self._http_client
 
-    def _compute_quality(self, result: SearchResult) -> float:
-        """Compute quality score for a search result."""
+    def _compute_quality(self, result: SearchResult, query: str = "") -> float:
+        """Compute quality score for a search result with relevance matching."""
         score = 0.0
+
         # Title quality
         if len(result.title) > 10:
-            score += 0.2
+            score += 0.15
+        if len(result.title) > 30:
+            score += 0.05
+
         # Snippet quality
         if len(result.snippet) > 50:
-            score += 0.3
+            score += 0.2
+        if len(result.snippet) > 150:
+            score += 0.1
+
         # URL validity
         if result.url.startswith("https://"):
-            score += 0.2
+            score += 0.15
+        elif result.url.startswith("http://"):
+            score += 0.05
+
         # Not a spam domain
-        spam_indicators = ["ads", "spam", "clickbait", "popup"]
+        spam_indicators = ["ads", "spam", "clickbait", "popup", "malware"]
         if not any(s in result.host_name.lower() for s in spam_indicators):
-            score += 0.3
-        return score
+            score += 0.1
 
-    # ── Source 1: z-ai SDK ───────────────────────────────────────────────
+        # Relevance matching with query keywords
+        if query:
+            query_words = set(query.lower().split())
+            title_words = set(result.title.lower().split())
+            snippet_words = set(result.snippet.lower().split())
+            title_overlap = len(query_words & title_words) / max(len(query_words), 1)
+            snippet_overlap = len(query_words & snippet_words) / max(len(query_words), 1)
+            score += title_overlap * 0.15
+            score += snippet_overlap * 0.1
+
+        return min(1.0, score)
+
+    # ── Source 1: z-ai SDK (via Python wrapper) ──────────────────────────
     async def _search_zai_sdk(self, query: str, num: int = 10) -> list[SearchResult]:
-        """Search using z-ai-web-dev-sdk — the most reliable source."""
-        try:
-            import importlib
-            zai_module = importlib.import_module("z-ai-web-dev-sdk")
-            ZAI = zai_module.default if hasattr(zai_module, 'default') else zai_module.ZAI
-            zai = await ZAI.create()
+        """Search using z-ai SDK — the most reliable source."""
+        wrapper = self._get_zai_wrapper()
+        if not wrapper:
+            logger.warning("z-ai SDK wrapper not available")
+            return []
 
-            results = await zai.functions.invoke("web_search", {
-                "query": query,
-                "num": num
-            })
+        try:
+            zai_results = await wrapper.web_search(query, num=num)
 
             search_results = []
-            for i, item in enumerate(results):
+            for i, item in enumerate(zai_results):
                 result = SearchResult(
-                    url=item.get("url", ""),
-                    title=item.get("name", ""),
-                    snippet=item.get("snippet", ""),
+                    url=item.url,
+                    title=item.name,
+                    snippet=item.snippet,
                     source="zai_sdk",
                     rank=i,
-                    host_name=item.get("host_name", ""),
+                    host_name=item.host_name,
                 )
-                result.quality_score = self._compute_quality(result)
+                result.quality_score = self._compute_quality(result, query)
                 search_results.append(result)
 
+            logger.info(f"z-ai SDK returned {len(search_results)} results for '{query}'")
             return search_results
 
-        except ImportError:
-            logger.warning("z-ai-web-dev-sdk not available")
-            return []
         except Exception as e:
             logger.error(f"z-ai SDK search failed: {e}")
             return []
@@ -207,7 +241,6 @@ class WebSearchClient:
         client = await self._get_http_client()
 
         try:
-            # DuckDuckGo HTML version — simpler to parse
             url = "https://html.duckduckgo.com/html/"
             data = {"q": query, "kl": "wt-wt"}
 
@@ -216,9 +249,11 @@ class WebSearchClient:
                 return []
 
             results = []
-            # Parse HTML results
-            import re
-            from bs4 import BeautifulSoup
+            try:
+                from bs4 import BeautifulSoup
+            except ImportError:
+                logger.warning("BeautifulSoup not available for DuckDuckGo scraping")
+                return []
 
             soup = BeautifulSoup(resp.text, "html.parser")
             for i, item in enumerate(soup.select(".result")):
@@ -236,8 +271,9 @@ class WebSearchClient:
                 if "//duckduckgo.com/l/" in href:
                     match = re.search(r'uddg=([^&]+)', href)
                     if match:
-                        from urllib.parse import unquote
                         href = unquote(match.group(1))
+
+                host = href.split("/")[2] if "/" in href and "://" in href else ""
 
                 result = SearchResult(
                     url=href,
@@ -245,14 +281,15 @@ class WebSearchClient:
                     snippet=snippet,
                     source="duckduckgo",
                     rank=i,
-                    host_name=href.split("/")[2] if "/" in href else "",
+                    host_name=host,
                 )
-                result.quality_score = self._compute_quality(result)
+                result.quality_score = self._compute_quality(result, query)
                 results.append(result)
 
                 if len(results) >= num:
                     break
 
+            logger.info(f"DuckDuckGo returned {len(results)} results for '{query}'")
             return results
 
         except Exception as e:
@@ -275,9 +312,6 @@ class WebSearchClient:
             num: Number of results desired
             depth: "quick" (5), "standard" (10), "deep" (20)
             force_fresh: Skip cache and fetch fresh results
-
-        Returns:
-            SearchResponse with results and metadata
         """
         depth_num = {"quick": 5, "standard": 10, "deep": 20}.get(depth, num)
         num = min(num, depth_num)
@@ -304,16 +338,15 @@ class WebSearchClient:
             logger.info("z-ai SDK returned few results, trying DuckDuckGo fallback")
             ddg_results = await self._search_duckduckgo(query, num)
             if ddg_results:
-                # Merge, deduplicate by URL
                 existing_urls = {r.url for r in results}
                 for r in ddg_results:
                     if r.url not in existing_urls:
                         results.append(r)
                         existing_urls.add(r.url)
-                if not results:
-                    source_used = "duckduckgo"
-                else:
-                    source_used = "zai_sdk+duckduckgo"
+                source_used = "zai_sdk+duckduckgo" if results else "duckduckgo"
+            elif not results:
+                source_used = "duckduckgo"
+                results = ddg_results
 
         # 5. Sort by quality score
         results.sort(key=lambda r: r.quality_score, reverse=True)
@@ -326,7 +359,7 @@ class WebSearchClient:
             query=query,
             results=results,
             total_results=len(results),
-            source_used=source_used,
+            source_used=source_used if results else "none",
             latency_ms=latency,
         )
 
@@ -336,17 +369,22 @@ class WebSearchClient:
 
         # 8. Record in meta-cognition
         self._search_count += 1
+        avg_quality = sum(r.quality_score for r in results) / len(results) if results else 0.0
+
         if self._meta_cognition:
-            from .meta_cognition_engine import OutcomeRecord
-            self._meta_cognition.record_outcome(OutcomeRecord(
-                component="web_search_client",
-                operation="search",
-                success=len(results) > 0,
-                quality_score=sum(r.quality_score for r in results) / len(results) if results else 0.0,
-                predicted_quality=self._meta_cognition.predict_quality("web_search_client"),
-                latency_ms=latency,
-                metadata={"source": source_used, "result_count": len(results)},
-            ))
+            try:
+                from .meta_cognition_engine import OutcomeRecord
+                self._meta_cognition.record_outcome(OutcomeRecord(
+                    component="web_search_client",
+                    operation="search",
+                    success=len(results) > 0,
+                    quality_score=avg_quality,
+                    predicted_quality=self._meta_cognition.predict_quality("web_search_client"),
+                    latency_ms=latency,
+                    metadata={"source": source_used, "result_count": len(results), "query": query[:100]},
+                ))
+            except ImportError:
+                pass
 
         return response
 
@@ -357,7 +395,6 @@ class WebSearchClient:
         if not response.results:
             return {"query": query, "summary": "No results found", "sources": []}
 
-        # Build context from top results
         context = "\n\n".join([
             f"{i+1}. {r.title}\n{r.snippet}\nURL: {r.url}"
             for i, r in enumerate(response.results[:5])
@@ -373,7 +410,7 @@ class WebSearchClient:
                 )
                 summary = llm_response.content if llm_response.success else "LLM summary failed"
             except Exception:
-                summary = "LLM summary unavailable"
+                summary = context[:500]
         else:
             summary = context[:500]
 
@@ -391,6 +428,7 @@ class WebSearchClient:
             "total_searches": self._search_count,
             "errors": self._error_count,
             "cache_stats": self._cache.stats,
+            "zai_wrapper_stats": self._zai_wrapper.get_stats() if self._zai_wrapper else None,
         }
 
     async def close(self):
