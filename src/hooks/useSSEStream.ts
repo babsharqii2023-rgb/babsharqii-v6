@@ -1,23 +1,39 @@
+// ═══════════════════════════════════════════════════════════════════
+// useSSEStream — Enhanced SSE Streaming Hook
+// Supports reconnection, event typing, and brain deliberation events
+// ═══════════════════════════════════════════════════════════════════
+
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
 import { parseSSEStream, sendChatDedicatedSSE, sendChatSSEViaProxy } from '@/lib/api';
 
-// ─── SSE Stream Hook ──────────────────────────────────────────
-// Connects to the SSE streaming chat endpoint
-// Fallback chain: dedicated SSE endpoint → /api/chat SSE → regular POST
-// CRITICAL FIX: streamedContent now properly accumulates from SSE chunks
-// CRITICAL FIX: properly handles z-ai SDK returning ReadableStream (not async iterable)
+// ─── SSE Event Types ───────────────────────────────────────────
 
-interface SSEStreamState {
+export interface SSEBrainEvent {
+  type: 'brain.thinking' | 'brain.response' | 'brain.consensus' | 'brain.complete';
+  brainId?: string;
+  brainName?: string;
+  content?: string;
+  confidence?: number;
+  stance?: string;
+  consensusLevel?: number;
+  winner?: string;
+  [key: string]: unknown;
+}
+
+export interface SSEStreamState {
   isStreaming: boolean;
   error: string | null;
   streamedContent: string;
   metadata: Record<string, unknown> | null;
+  brainEvents: SSEBrainEvent[];
+  activeBrains: string[];
 }
 
 interface UseSSEStreamReturn extends SSEStreamState {
   send: (message: string, history?: Array<{ role: string; content: string }>) => Promise<string | null>;
+  sendToSuperMind: (message: string, intent?: string, history?: Array<{ role: string; content: string }>) => Promise<string | null>;
   reset: () => void;
 }
 
@@ -27,13 +43,11 @@ export function useSSEStream(): UseSSEStreamReturn {
     error: null,
     streamedContent: '',
     metadata: null,
+    brainEvents: [],
+    activeBrains: [],
   });
   const abortRef = useRef<AbortController | null>(null);
 
-  /**
-   * Process an SSE Response and accumulate tokens
-   * Returns the full content string, or null on error
-   */
   const processSSEResponse = useCallback(async (
     response: Response,
     controller: AbortController
@@ -47,6 +61,7 @@ export function useSSEStream(): UseSSEStreamReturn {
       try {
         const parsed = JSON.parse(event.data);
 
+        // Token/Content events
         if (parsed.type === 'token' || parsed.type === 'content') {
           const chunk = parsed.content || parsed.token || '';
           fullContent += chunk;
@@ -54,51 +69,57 @@ export function useSSEStream(): UseSSEStreamReturn {
             ...prev,
             streamedContent: fullContent,
           }));
-        } else if (parsed.type === 'metadata') {
-          meta = parsed;
+        }
+        // Brain-specific events
+        else if (parsed.type === 'brain.thinking' || parsed.type === 'brain.response' ||
+                 parsed.type === 'brain.consensus' || parsed.type === 'brain.complete') {
           setState(prev => ({
             ...prev,
-            metadata: meta,
+            brainEvents: [...prev.brainEvents, parsed as SSEBrainEvent],
+            activeBrains: parsed.brainId
+              ? prev.activeBrains.includes(parsed.brainId)
+                ? prev.activeBrains
+                : [...prev.activeBrains, parsed.brainId]
+              : prev.activeBrains,
           }));
-        } else if (parsed.type === 'done') {
+        }
+        // Metadata events
+        else if (parsed.type === 'metadata') {
+          meta = parsed;
+          setState(prev => ({ ...prev, metadata: meta }));
+        }
+        // Done event
+        else if (parsed.type === 'done') {
           meta = parsed;
           setState(prev => ({
             ...prev,
             metadata: meta,
             isStreaming: false,
           }));
-        } else if (parsed.type === 'error') {
+        }
+        // Error event
+        else if (parsed.type === 'error') {
           setState(prev => ({
             ...prev,
             error: parsed.message || 'Stream error',
             isStreaming: false,
           }));
           throw new Error(parsed.message || 'Stream error');
-        } else if (parsed.content && !parsed.type) {
-          // Some backends just send content directly
+        }
+        // Fallback: raw content
+        else if (parsed.content && !parsed.type) {
           fullContent += parsed.content;
-          setState(prev => ({
-            ...prev,
-            streamedContent: fullContent,
-          }));
+          setState(prev => ({ ...prev, streamedContent: fullContent }));
         }
       } catch (parseError) {
-        // If data isn't JSON, treat as raw text token
         if (parseError instanceof SyntaxError) {
           if (event.data && event.data !== '[DONE]') {
             fullContent += event.data;
-            setState(prev => ({
-              ...prev,
-              streamedContent: fullContent,
-            }));
+            setState(prev => ({ ...prev, streamedContent: fullContent }));
           } else if (event.data === '[DONE]') {
-            setState(prev => ({
-              ...prev,
-              isStreaming: false,
-            }));
+            setState(prev => ({ ...prev, isStreaming: false }));
           }
         } else {
-          // Re-throw non-parse errors (like our own error type throws)
           throw parseError;
         }
       }
@@ -107,106 +128,73 @@ export function useSSEStream(): UseSSEStreamReturn {
     return { content: fullContent, meta };
   }, []);
 
+  // ─── Regular Send ──────────────────────────────────────────
+
   const send = useCallback(async (
     message: string,
     history?: Array<{ role: string; content: string }>
   ): Promise<string | null> => {
-    // Cancel any existing stream
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
-
+    if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
-    // Reset state for new stream
     setState({
       isStreaming: true,
       error: null,
       streamedContent: '',
       metadata: null,
+      brainEvents: [],
+      activeBrains: [],
     });
 
     try {
-      // ─── 1. Try dedicated SSE endpoint first (always streams) ───
+      // 1. Dedicated SSE endpoint
       try {
         const response = await sendChatDedicatedSSE({ message, history });
         const result = await processSSEResponse(response, controller);
-
-        // Mark stream complete if not already done
-        setState(prev => ({
-          ...prev,
-          isStreaming: false,
-        }));
-
+        setState(prev => ({ ...prev, isStreaming: false }));
         return result.content;
-      } catch (dedicatedSSEError) {
-        console.warn('[SSE] Dedicated endpoint failed, trying /api/chat SSE:', dedicatedSSEError);
-        // Reset streaming state for retry
-        setState(prev => ({
-          ...prev,
-          streamedContent: '',
-          isStreaming: true,
-        }));
+      } catch {
+        console.warn('[SSE] Dedicated endpoint failed, trying fallback');
+        setState(prev => ({ ...prev, streamedContent: '', isStreaming: true }));
       }
 
-      // ─── 2. Try /api/chat with stream:true ───
+      // 2. /api/chat SSE
       try {
         const response = await sendChatSSEViaProxy({ message, history });
         const result = await processSSEResponse(response, controller);
-
-        setState(prev => ({
-          ...prev,
-          isStreaming: false,
-        }));
-
+        setState(prev => ({ ...prev, isStreaming: false }));
         return result.content;
-      } catch (chatSSEError) {
-        console.warn('[SSE] /api/chat SSE failed, trying regular POST:', chatSSEError);
-        setState(prev => ({
-          ...prev,
-          streamedContent: '',
-          isStreaming: true,
-        }));
+      } catch {
+        console.warn('[SSE] /api/chat SSE failed, trying regular POST');
+        setState(prev => ({ ...prev, streamedContent: '', isStreaming: true }));
       }
 
-      // ─── 3. Fallback: regular POST (no streaming) ───
+      // 3. Regular POST fallback
       try {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message, history }),
         });
-
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
         const data = await res.json();
-
-        // Wrap the JSON response as if it were a streamed response
         const content = data.content || data.response || '';
-        const meta: Record<string, unknown> = {
-          brain: data.brain || 'neural',
-          confidence: data.confidence || 0.85,
-          latency: data.latency || 0,
-          source: data.source || 'fallback',
-        };
-
         setState({
           isStreaming: false,
           error: null,
           streamedContent: content,
-          metadata: meta,
+          metadata: { brain: data.brain || 'neural', confidence: data.confidence || 0.85 },
+          brainEvents: [],
+          activeBrains: [],
         });
-
         return content;
       } catch (postError) {
-        console.error('[SSE] All methods failed:', postError);
         if (controller.signal.aborted) return null;
-
         setState(prev => ({
           ...prev,
           isStreaming: false,
-          error: postError instanceof Error ? postError.message : 'فشل الاتصال بجميع الخدمات',
+          error: postError instanceof Error ? postError.message : 'فشل الاتصال',
         }));
         return null;
       }
@@ -221,17 +209,74 @@ export function useSSEStream(): UseSSEStreamReturn {
     }
   }, [processSSEResponse]);
 
-  const reset = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort();
+  // ─── SuperMind Send ────────────────────────────────────────
+
+  const sendToSuperMind = useCallback(async (
+    message: string,
+    intent?: string,
+    history?: Array<{ role: string; content: string }>
+  ): Promise<string | null> => {
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setState({
+      isStreaming: true,
+      error: null,
+      streamedContent: '',
+      metadata: null,
+      brainEvents: [],
+      activeBrains: [],
+    });
+
+    try {
+      const res = await fetch('/api/super-mind/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, intent, history }),
+      });
+
+      if (!res.ok) {
+        // Fallback to regular chat
+        return send(message, history);
+      }
+
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('text/event-stream')) {
+        const result = await processSSEResponse(res, controller);
+        setState(prev => ({ ...prev, isStreaming: false }));
+        return result.content;
+      }
+
+      // JSON response
+      const data = await res.json();
+      const content = data.content || data.response || '';
+      setState({
+        isStreaming: false,
+        error: null,
+        streamedContent: content,
+        metadata: data,
+        brainEvents: data.brain_events || [],
+        activeBrains: data.activated_brains || [],
+      });
+      return content;
+    } catch {
+      // Fallback to regular chat
+      return send(message, history);
     }
+  }, [send, processSSEResponse]);
+
+  const reset = useCallback(() => {
+    if (abortRef.current) abortRef.current.abort();
     setState({
       isStreaming: false,
       error: null,
       streamedContent: '',
       metadata: null,
+      brainEvents: [],
+      activeBrains: [],
     });
   }, []);
 
-  return { ...state, send, reset };
+  return { ...state, send, sendToSuperMind, reset };
 }

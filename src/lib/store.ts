@@ -1,8 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════
-// مأمون v40.0 — Unified Store
+// مأمون v61 — Unified Store (SuperMind)
 // Provides all interfaces needed by components + missing methods from slices
 //
-// v40.0 Changes:
+// v61 SuperMind Changes:
+// - currentIntent / activeScreen / screenProps for SuperMindRouter
+// - Sound preferences (enabled, volume, mode)
+// - Projects list
+// - Brain states map
 // - Persistent chat memory (localStorage + API)
 // - Feedforward mechanism (suggestions, clarifications)
 // - Real confidence tracking
@@ -115,6 +119,18 @@ export interface SelfModification {
 }
 export type BrainVoteType = BrainVote;
 
+// v61 SuperMind: Project type for ProjectsTracker
+export interface Project {
+  id: string;
+  name: string;
+  nameAr: string;
+  category: string;
+  status: 'thinking' | 'proposed' | 'working' | 'done';
+  progress: number;
+  leadingBrain?: string;
+  description?: string;
+}
+
 // ─── Store Interface ───────────────────────────────────────────
 
 interface AppStore {
@@ -178,6 +194,27 @@ interface AppStore {
   // v40: User interaction tracking
   interactionCount: number;
   incrementInteraction: () => void;
+
+  // v61 SuperMind: Intent & Screen routing
+  currentIntent: string | null;
+  setCurrentIntent: (intent: string | null) => void;
+  activeScreen: string | null;
+  setActiveScreen: (screen: string | null) => void;
+  screenProps: Record<string, any>;
+  setScreenProps: (props: Record<string, any>) => void;
+
+  // v61 SuperMind: Sound preferences
+  soundEnabled: boolean;
+  soundVolume: number;
+  soundMode: 'immersive' | 'ambient' | 'minimal';
+
+  // v61 SuperMind: Projects
+  projects: Project[];
+  setProjects: (projects: Project[]) => void;
+
+  // v61 SuperMind: Brain states map
+  brainStates: Record<string, any>;
+  setBrainStates: (states: Record<string, any>) => void;
 }
 
 // ─── Default Brains ────────────────────────────────────────────
@@ -339,6 +376,27 @@ export const useAppStore = create<AppStore>()((set, get) => ({
       return { interactionCount: newCount };
     });
   },
+
+  // v61 SuperMind: Intent & Screen routing
+  currentIntent: null,
+  setCurrentIntent: (intent: string | null) => set({ currentIntent: intent }),
+  activeScreen: null,
+  setActiveScreen: (screen: string | null) => set({ activeScreen: screen }),
+  screenProps: {},
+  setScreenProps: (props: Record<string, any>) => set({ screenProps: props }),
+
+  // v61 SuperMind: Sound preferences
+  soundEnabled: true,
+  soundVolume: 50,
+  soundMode: 'ambient',
+
+  // v61 SuperMind: Projects
+  projects: [],
+  setProjects: (projects: Project[]) => set({ projects }),
+
+  // v61 SuperMind: Brain states map
+  brainStates: {},
+  setBrainStates: (states: Record<string, any>) => set({ brainStates: states }),
 }));
 
 // ─── Feedforward Generation ──────────────────────────────────

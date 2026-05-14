@@ -381,6 +381,27 @@ async def lifespan(app: FastAPI):
         import traceback; traceback.print_exc()
         print(f"[Mamoun] Living Systems endpoints will return 503")
 
+    # ═══ v61: Initialize SuperBrain components — العقل الخارق مامون ═══
+    try:
+        from mamoun.core.super_brain.integration_bridge import initialize_super_brain
+        sb_results = await initialize_super_brain(
+            kernel=kernel,
+            llm_client=llm,
+            neural_bus=neural_bus if 'neural_bus' in dir() else None,
+        )
+        sb_successes = sum(1 for v in sb_results.values() if "initialized" in str(v))
+        sb_total = len(sb_results)
+        print(f"[Mamoun] SuperBrain v61: {sb_successes}/{sb_total} components initialized ✓")
+        for name, status in sb_results.items():
+            print(f"[Mamoun]   {name}: {status}")
+
+        # Store reference in app state for API access
+        app.state.super_brain_initialized = True
+    except Exception as e:
+        print(f"[Mamoun] ⚠ SuperBrain initialization failed: {e}")
+        import traceback; traceback.print_exc()
+        app.state.super_brain_initialized = False
+
     # v34: Check API key status for all 3 providers
     has_glm = bool(os.getenv('GLM_API_KEY', ''))
     has_deepseek = bool(os.getenv('DEEPSEEK_API_KEY', ''))
@@ -438,6 +459,16 @@ async def lifespan(app: FastAPI):
         print("[Mamoun] Living systems stopped ✓")
     except Exception as e:
         print(f"[Mamoun] ⚠ Living systems shutdown error: {e}")
+
+    # v61: Shutdown SuperBrain components
+    try:
+        from mamoun.core.super_brain.integration_bridge import get_component
+        health_monitor = get_component("health_monitor")
+        if health_monitor and hasattr(health_monitor, 'stop_monitoring'):
+            await health_monitor.stop_monitoring()
+            print("[Mamoun] HealthMonitor stopped ✓")
+    except Exception as e:
+        print(f"[Mamoun] ⚠ SuperBrain shutdown error: {e}")
 
     kernel_task.cancel()
     try:

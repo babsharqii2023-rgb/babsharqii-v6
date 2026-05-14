@@ -112,6 +112,9 @@ from mamoun.api.auto_research_heal import router as auto_research_heal_router
 from mamoun.api.project_scaffold import router as project_scaffold_router
 from mamoun.api.external_project import router as external_project_router
 
+# v61: SuperMind API — exposes all 29 super_brain components through unified endpoints
+from mamoun.api.supermind import router as supermind_router
+
 api_router = APIRouter()
 api_router.include_router(awareness_router)
 api_router.include_router(evolution_router)
@@ -201,3 +204,6 @@ api_router.include_router(auto_research_heal_router)
 # v50.0 Fusion: Project Scaffolder + External Project Controller
 api_router.include_router(project_scaffold_router)
 api_router.include_router(external_project_router)
+
+# v61: SuperMind API — 20 endpoints exposing all super_brain components
+api_router.include_router(supermind_router)

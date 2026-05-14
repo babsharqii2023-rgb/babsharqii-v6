@@ -1,21 +1,31 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// العقل الخارق — SuperMind Command Center
+// مأمون v61 — Three-Panel Layout with 3D Brain Network
+//
+// Layout: Chat (30%) | ContextScreen (40%) | BrainNetwork (30%)
+// Features: SuperMindRouter, Three.js 3D Brain, GSAP, Framer Motion,
+//           Web Audio API, SSE Streaming, RTL Arabic
+// ═══════════════════════════════════════════════════════════════════════════════
+
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import gsap from 'gsap';
 import { useAppStore } from '@/lib/store';
 import { fetchBrainStates, fetchLivingVitals, fetchProjects, fetchKernelStatus, type BrainState } from '@/lib/jarvis-api';
-import BrainsOrbPanel from '@/components/dashboard/panels/BrainsOrbPanel';
-import NeuralBusPanel from '@/components/dashboard/panels/NeuralBusPanel';
-import InnerMonologuePanel from '@/components/dashboard/panels/InnerMonologuePanel';
-import LifePanel from '@/components/dashboard/panels/LifePanel';
-import ConsciousnessPanel from '@/components/dashboard/panels/ConsciousnessPanel';
-import ProjectsPanel from '@/components/dashboard/panels/ProjectsPanel';
-import SwarmPanel from '@/components/dashboard/panels/SwarmPanel';
-import SitesPanel from '@/components/dashboard/panels/SitesPanel';
-import ReactMarkdown from 'react-markdown';
+import { routeIntent, type SuperMindRoute } from '@/lib/super-mind-router';
+import { useBrainSound } from '@/hooks/useBrainSound';
+import { useSSEStream } from '@/hooks/useSSEStream';
+import BrainNetwork from '@/components/brain/BrainNetwork';
+import ContextScreen from '@/components/brain/ContextScreen';
+import ThinkingAnimation from '@/components/chat/ThinkingAnimation';
+import ChatCard from '@/components/chat/ChatCard';
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// الثيم الكوني — مطابق للموكاب
+// الثيم الكوني الموسع — Extended Cosmic Theme
 // ═══════════════════════════════════════════════════════════════════════════════
+
 const T = {
   bg: '#080810',
   chatBg: '#0d0d1a',
@@ -50,191 +60,20 @@ const T = {
   orange: '#FF9800',
   red: '#EF4444',
 
-  ring1Color: '#0a9b8a',
-  ring2Color: '#0d7bb5',
-  ring3Color: '#1e8aad',
-  ring4Color: '#0a4a6e',
-  ring5Color: '#5a6a80',
+  // Brain colors
+  brainNeural: '#00e5ff',
+  brainCausal: '#ff9100',
+  brainSymbolic: '#448aff',
+  brainBayesian: '#69f0ae',
+  brainWorldModel: '#ffd740',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// تعريف العقد المدارية — 5 حلقات
+// المكون الرئيسي — SuperMind Command Center
 // ═══════════════════════════════════════════════════════════════════════════════
-interface OrbitalNode {
-  id: string;
-  nameAr: string;
-  icon: string;
-  ring: number;
-  color: string;
-  panel: string;
-  apiPath?: string;
-}
 
-const ORBITAL_NODES: OrbitalNode[] = [
-  // الحلقة 1 — الأدمغة الخمسة
-  { id: 'neural', nameAr: 'العصبي', icon: '🧠', ring: 1, color: T.ring1Color, panel: 'brains' },
-  { id: 'causal', nameAr: 'السببي', icon: '🔗', ring: 1, color: '#2196F3', panel: 'brains' },
-  { id: 'symbolic', nameAr: 'الرمزي', icon: '⬡', ring: 1, color: '#0a4a6e', panel: 'brains' },
-  { id: 'bayesian', nameAr: 'البيزي', icon: '🎯', ring: 1, color: '#1565C0', panel: 'brains' },
-  { id: 'worldmodel', nameAr: 'العالمي', icon: '🌐', ring: 1, color: '#0D47A1', panel: 'brains' },
-
-  // الحلقة 2 — الركائز السبعة
-  { id: 'memory', nameAr: 'الذاكرة العرضية', icon: '💾', ring: 2, color: T.ring2Color, panel: 'agi', apiPath: '/api/agi/memory' },
-  { id: 'emotions', nameAr: 'المشاعر العميقة', icon: '💖', ring: 2, color: T.ring2Color, panel: 'life' },
-  { id: 'embodiment', nameAr: 'الجسد الرقمي', icon: '🤖', ring: 2, color: T.ring2Color, panel: 'agi', apiPath: '/api/embodiment' },
-  { id: 'learning', nameAr: 'التعلم من مثال', icon: '📚', ring: 2, color: T.ring2Color, panel: 'agi', apiPath: '/api/agi/learn' },
-  { id: 'planning', nameAr: 'التخطيط المقيد', icon: '📋', ring: 2, color: T.ring2Color, panel: 'agi', apiPath: '/api/agi/plan' },
-  { id: 'creativity', nameAr: 'الإبداع الأصيل', icon: '💡', ring: 2, color: T.ring2Color, panel: 'agi', apiPath: '/api/creativity' },
-  { id: 'bonding', nameAr: 'التعاون البشري', icon: '👥', ring: 2, color: T.ring2Color, panel: 'life' },
-
-  // الحلقة 3 — القدرات الاثنا عشر
-  { id: 'code', nameAr: 'البرمجة', icon: '⌨️', ring: 3, color: T.ring3Color, panel: 'capability' },
-  { id: 'content', nameAr: 'إنشاء المحتوى', icon: '✍️', ring: 3, color: T.ring3Color, panel: 'capability' },
-  { id: 'business', nameAr: 'تحليل الأعمال', icon: '📊', ring: 3, color: T.ring3Color, panel: 'capability' },
-  { id: 'sites', nameAr: 'التحكم بالمواقع', icon: '🌍', ring: 3, color: T.ring3Color, panel: 'sites' },
-  { id: 'tools', nameAr: 'الأدوات', icon: '🔧', ring: 3, color: T.ring3Color, panel: 'capability' },
-  { id: 'reflection', nameAr: 'التأمل الذاتي', icon: '🪞', ring: 3, color: T.ring3Color, panel: 'consciousness' },
-  { id: 'social', nameAr: 'وسائل التواصل', icon: '📱', ring: 3, color: T.ring3Color, panel: 'capability' },
-  { id: 'blender', nameAr: 'بلندر 3D', icon: '🎨', ring: 3, color: T.ring3Color, panel: 'capability' },
-  { id: 'trading', nameAr: 'التداول', icon: '📈', ring: 3, color: T.ring3Color, panel: 'capability' },
-  { id: 'browser', nameAr: 'المتصفح', icon: '🖥️', ring: 3, color: T.ring3Color, panel: 'capability' },
-  { id: 'laptop', nameAr: 'اللابتوب', icon: '💻', ring: 3, color: T.ring3Color, panel: 'capability' },
-  { id: 'ecommerce', nameAr: 'المتجر', icon: '🛒', ring: 3, color: T.ring3Color, panel: 'capability' },
-
-  // الحلقة 4 — الأنظمة الحية الستة
-  { id: 'vitals', nameAr: 'المؤشرات الحيوية', icon: '💓', ring: 4, color: T.ring4Color, panel: 'life' },
-  { id: 'emotional_mem', nameAr: 'الذاكرة العاطفية', icon: '🧠', ring: 4, color: T.ring4Color, panel: 'life' },
-  { id: 'deep_bond', nameAr: 'الارتباط العميق', icon: '🤝', ring: 4, color: T.ring4Color, panel: 'life' },
-  { id: 'reflexes', nameAr: 'ردود الفعل', icon: '⚡', ring: 4, color: T.ring4Color, panel: 'life' },
-  { id: 'autonomic', nameAr: 'الجهاز التلقائي', icon: '🫀', ring: 4, color: T.ring4Color, panel: 'life' },
-  { id: 'monologue', nameAr: 'الحوار الداخلي', icon: '💭', ring: 4, color: T.ring4Color, panel: 'monologue' },
-
-  // الحلقة 5 — الأنظمة/المشاريع
-  { id: 'neuralbus', nameAr: 'الناقل العصبي', icon: '📡', ring: 5, color: T.ring5Color, panel: 'neuralbus' },
-  { id: 'swarm', nameAr: 'السرب', icon: '🐝', ring: 5, color: T.ring5Color, panel: 'swarm' },
-  { id: 'consciousness_sys', nameAr: 'الوعي', icon: '👁️', ring: 5, color: T.ring5Color, panel: 'consciousness' },
-  { id: 'projects', nameAr: 'المشاريع', icon: '📁', ring: 5, color: T.ring5Color, panel: 'projects' },
-  { id: 'deploy', nameAr: 'النشر', icon: '🚀', ring: 5, color: T.ring5Color, panel: 'sites' },
-];
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// حلقة مدارية واحدة (مكون فرعي)
-// ═══════════════════════════════════════════════════════════════════════════════
-interface OrbitalRingProps {
-  nodes: OrbitalNode[];
-  radius: number;
-  centerX: number;
-  centerY: number;
-  tick: number;
-  selectedNode: string | null;
-  hoveredNode: string | null;
-  winnerNode: string;
-  onNodeClick: (id: string) => void;
-  onNodeHover: (id: string | null) => void;
-  speedFactor: number;
-  ringColor: string;
-}
-
-function OrbitalRing({
-  nodes, radius, centerX, centerY, tick,
-  selectedNode, hoveredNode, winnerNode,
-  onNodeClick, onNodeHover, speedFactor, ringColor,
-}: OrbitalRingProps) {
-  const angleStep = (2 * Math.PI) / nodes.length;
-
-  return (
-    <g>
-      {/* حلقة المدار */}
-      <circle
-        cx={centerX} cy={centerY} r={radius}
-        fill="none" stroke={ringColor} strokeWidth={0.5}
-        strokeOpacity={0.15}
-        strokeDasharray="4 8"
-      />
-
-      {/* العقد */}
-      {nodes.map((node, i) => {
-        const angle = tick * speedFactor + i * angleStep - Math.PI / 2;
-        const x = centerX + radius * Math.cos(angle);
-        const y = centerY + radius * Math.sin(angle);
-
-        const isSelected = selectedNode === node.id;
-        const isHovered = hoveredNode === node.id;
-        const isWinner = winnerNode === node.id;
-        const pulse = isSelected ? 1.2 : isWinner ? 1 + 0.08 * Math.sin(tick * 3) : 1;
-        const nodeRadius = isSelected ? 16 : isHovered ? 14 : 12;
-
-        return (
-          <g key={node.id} onClick={() => onNodeClick(node.id)}
-             onMouseEnter={() => onNodeHover(node.id)}
-             onMouseLeave={() => onNodeHover(null)}
-             style={{ cursor: 'pointer' }}>
-
-            {/* خيط متوهج من المركز للعقدة */}
-            <line
-              x1={centerX} y1={centerY} x2={x} y2={y}
-              stroke={isSelected ? node.color : ringColor}
-              strokeWidth={isSelected ? 1.5 : 0.5}
-              strokeOpacity={isSelected ? 0.5 : isHovered ? 0.25 : 0.08}
-            />
-
-            {/* جسيم ضوئي على الخيط */}
-            {(isSelected || isWinner) && (
-              <circle
-                cx={centerX + (x - centerX) * (0.5 + 0.3 * Math.sin(tick * 4))}
-                cy={centerY + (y - centerY) * (0.5 + 0.3 * Math.sin(tick * 4))}
-                r={2} fill={node.color} opacity={0.6 + 0.4 * Math.sin(tick * 5)}
-              />
-            )}
-
-            {/* هالة العقدة المختارة */}
-            {isSelected && (
-              <circle cx={x} cy={y} r={nodeRadius + 8}
-                fill="none" stroke={node.color} strokeWidth={2}
-                strokeOpacity={0.3 + 0.2 * Math.sin(tick * 3)} />
-            )}
-
-            {/* هالة الفائز */}
-            {isWinner && !isSelected && (
-              <circle cx={x} cy={y} r={nodeRadius + 6 * pulse}
-                fill="none" stroke={T.primary} strokeWidth={1.5}
-                strokeOpacity={0.3 + 0.3 * Math.sin(tick * 2)} />
-            )}
-
-            {/* الدائرة الأساسية */}
-            <circle cx={x} cy={y} r={nodeRadius * pulse}
-              fill={isSelected ? `${node.color}40` : isHovered ? `${node.color}20` : `${node.color}10`}
-              stroke={isSelected ? node.color : isHovered ? node.color : ringColor}
-              strokeWidth={isSelected ? 2 : 1}
-              strokeOpacity={isSelected ? 0.8 : isHovered ? 0.5 : 0.3}
-            />
-
-            {/* الأيقونة */}
-            <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="central"
-              fontSize={isSelected ? 14 : 11} style={{ pointerEvents: 'none' }}>
-              {node.icon}
-            </text>
-
-            {/* الاسم (يظهر عند التحويم أو الاختيار) */}
-            {(isSelected || isHovered) && (
-              <text x={x} y={y + nodeRadius + 12} textAnchor="middle"
-                fill={T.white90} fontSize={9} fontWeight="600"
-                style={{ pointerEvents: 'none' }}>
-                {node.nameAr}
-              </text>
-            )}
-          </g>
-        );
-      })}
-    </g>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// المكون الرئيسي — مركز مأمون المداري
-// ═══════════════════════════════════════════════════════════════════════════════
 export default function MamounCommandCenter() {
-  // ─── State ────────────────────────────────────────────────────
+  // ─── Store ────────────────────────────────────────────────────
   const messages = useAppStore((s) => s.messages);
   const isThinking = useAppStore((s) => s.isThinking);
   const sendMessage = useAppStore((s) => s.sendMessage);
@@ -244,36 +83,50 @@ export default function MamounCommandCenter() {
   const updateDeliberationData = useAppStore((s) => s.updateDeliberationData);
   const defaultModel = useAppStore((s) => s.defaultModel);
   const isConscious = useAppStore((s) => s.isConscious);
+  const currentIntent = useAppStore((s) => s.currentIntent);
+  const setCurrentIntent = useAppStore((s) => s.setCurrentIntent);
+  const activeScreen = useAppStore((s) => s.activeScreen);
+  const setActiveScreen = useAppStore((s) => s.setActiveScreen);
+  const setScreenProps = useAppStore((s) => s.setScreenProps);
+  const soundEnabled = useAppStore((s) => s.soundEnabled);
+  const soundVolume = useAppStore((s) => s.soundVolume);
+  const soundMode = useAppStore((s) => s.soundMode);
 
+  // ─── Local State ──────────────────────────────────────────────
   const [inputText, setInputText] = useState('');
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  const [winnerIndex, setWinnerIndex] = useState(0);
   const [brainData, setBrainData] = useState<BrainState[]>([]);
   const [vitality, setVitality] = useState(75);
   const [consciousness, setConsciousness] = useState(0.7);
   const [signalCount, setSignalCount] = useState(0);
-  const [projectCount, setProjectCount] = useState(0);
-  const [ripple, setRipple] = useState(0);
+  const [activeBrains, setActiveBrains] = useState<string[]>(['neural']);
+  const [currentRoute, setCurrentRoute] = useState<SuperMindRoute | null>(null);
+  const [brainConfidences, setBrainConfidences] = useState<Record<string, number>>({});
+  const [screenAnimation, setScreenAnimation] = useState('fadeIn');
+  const [screenPropsData, setScreenPropsData] = useState<Record<string, unknown>>({});
 
+  // ─── Refs ─────────────────────────────────────────────────────
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const chatPanelRef = useRef<HTMLDivElement>(null);
+  const contextPanelRef = useRef<HTMLDivElement>(null);
+  const brainPanelRef = useRef<HTMLDivElement>(null);
 
-  // ─── نبض الأنيميشن ─────────────────────────────────────────
+  // ─── Hooks ────────────────────────────────────────────────────
+  const brainSound = useBrainSound({
+    enabled: soundEnabled,
+    volume: soundVolume,
+    mode: soundMode as 'immersive' | 'ambient' | 'minimal',
+  });
+  const sseStream = useSSEStream();
+
+  // ─── Animation Tick ───────────────────────────────────────────
   useEffect(() => {
     const iv = setInterval(() => setTick(t => t + 1), 50);
     return () => clearInterval(iv);
   }, []);
 
-  // ─── دوران الدماغ الفائز ──────────────────────────────────
-  useEffect(() => {
-    const iv = setInterval(() => setWinnerIndex(w => (w + 1) % 5), 4000);
-    return () => clearInterval(iv);
-  }, []);
-
-  // ─── جلب البيانات الحية ───────────────────────────────────
+  // ─── Fetch Live Data ──────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
       try {
@@ -286,13 +139,16 @@ export default function MamounCommandCenter() {
 
         if (brainsRes.status === 'fulfilled' && brainsRes.value?.brains?.length) {
           setBrainData(brainsRes.value.brains);
+          // Update confidences
+          const confs: Record<string, number> = {};
+          for (const b of brainsRes.value.brains) {
+            confs[b.id] = b.confidence;
+          }
+          setBrainConfidences(confs);
         }
         if (vitalsRes.status === 'fulfilled') {
           const d = vitalsRes.value as Record<string, unknown>;
           setVitality(Math.round((d.vitality as number) || 75));
-        }
-        if (projectsRes.status === 'fulfilled' && projectsRes.value?.projects?.length) {
-          setProjectCount(projectsRes.value.projects.length);
         }
         if (kernelRes.status === 'fulfilled') {
           const d = kernelRes.value as unknown as Record<string, unknown>;
@@ -305,111 +161,130 @@ export default function MamounCommandCenter() {
     return () => clearInterval(iv);
   }, []);
 
-  // ─── عداد إشارات الناقل ────────────────────────────────────
+  // ─── Signal Counter ───────────────────────────────────────────
   useEffect(() => {
     const iv = setInterval(() => setSignalCount(s => s + Math.floor(Math.random() * 3)), 2000);
     return () => clearInterval(iv);
   }, []);
 
-  // ─── رسم الخيوط العصبية (Canvas) ──────────────────────────
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const w = canvas.width = canvas.offsetWidth || 800;
-    const h = canvas.height = canvas.offsetHeight || 600;
-
-    ctx.fillStyle = 'transparent';
-    ctx.clearRect(0, 0, w, h);
-
-    const threads = 20;
-    for (let i = 0; i < threads; i++) {
-      const x1 = Math.random() * w;
-      const y1 = Math.random() * h;
-      const x2 = Math.random() * w;
-      const y2 = Math.random() * h;
-      const opacity = 0.02 + 0.04 * Math.sin(tick * 0.02 + i);
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.bezierCurveTo(
-        x1 + (x2 - x1) * 0.3, y1 + (y2 - y1) * 0.1,
-        x1 + (x2 - x1) * 0.7, y1 + (y2 - y1) * 0.9,
-        x2, y2
-      );
-      ctx.strokeStyle = `rgba(10,74,110,${opacity})`;
-      ctx.lineWidth = 0.5;
-      ctx.stroke();
-    }
-
-    for (let i = 0; i < 8; i++) {
-      const x = (Math.sin(tick * 0.01 + i * 2.1) * 0.4 + 0.5) * w;
-      const y = (Math.cos(tick * 0.008 + i * 1.7) * 0.4 + 0.5) * h;
-      ctx.beginPath();
-      ctx.arc(x, y, 2, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(13,123,181,${0.2 + 0.15 * Math.sin(tick * 0.04 + i)})`;
-      ctx.fill();
-    }
-  }, [tick]);
-
-  // ─── تمرير الرسائل ────────────────────────────────────────
+  // ─── Scroll Messages ─────────────────────────────────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // ─── تحديد العقدة المختارة ────────────────────────────────
-  const selectedPanel = useMemo(() => {
-    if (!selectedNode) return 'brains';
-    const node = ORBITAL_NODES.find(n => n.id === selectedNode);
-    return node?.panel || 'brains';
-  }, [selectedNode]);
+  // ─── GSAP Panel Transitions ──────────────────────────────────
+  useEffect(() => {
+    if (chatPanelRef.current) {
+      gsap.fromTo(chatPanelRef.current,
+        { opacity: 0, x: -20 },
+        { opacity: 1, x: 0, duration: 0.5, ease: 'power2.out' }
+      );
+    }
+    if (contextPanelRef.current) {
+      gsap.fromTo(contextPanelRef.current,
+        { opacity: 0, y: 15 },
+        { opacity: 1, y: 0, duration: 0.6, delay: 0.1, ease: 'power2.out' }
+      );
+    }
+    if (brainPanelRef.current) {
+      gsap.fromTo(brainPanelRef.current,
+        { opacity: 0, x: 20 },
+        { opacity: 1, x: 0, duration: 0.5, delay: 0.2, ease: 'power2.out' }
+      );
+    }
+  }, []);
 
-  // ─── تحديد الدماغ الفائز ──────────────────────────────────
-  const winnerNodeId = useMemo(() => {
-    const ring1 = ORBITAL_NODES.filter(n => n.ring === 1);
-    return ring1[winnerIndex % ring1.length]?.id || 'neural';
-  }, [winnerIndex]);
+  // ─── Sound preference sync ────────────────────────────────────
+  useEffect(() => {
+    brainSound.updatePreferences({
+      enabled: soundEnabled,
+      volume: soundVolume,
+      mode: soundMode as 'immersive' | 'ambient' | 'minimal',
+    });
+  }, [soundEnabled, soundVolume, soundMode, brainSound]);
 
-  // ─── إرسال الرسالة ────────────────────────────────────────
+  // ─── Handle Send ──────────────────────────────────────────────
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text) return;
+
+    // Resume audio context on user interaction
+    brainSound.resume();
+
+    // 1. Route intent via SuperMindRouter
+    const route = routeIntent(text);
+    setCurrentRoute(route);
+    setCurrentIntent(route.intent);
+
+    // 2. Play intent detected sound
+    brainSound.playEvent('intent.detected', { brainId: route.activatedBrains[0] });
+
+    // 3. Activate brains for this intent
+    setActiveBrains(route.activatedBrains);
+    for (const brainId of route.activatedBrains) {
+      brainSound.playBrainActivation(brainId);
+    }
+
+    // 4. Update context screen if intent has one
+    if (route.screenComponent) {
+      setScreenAnimation(route.animation);
+      setActiveScreen(route.screenComponent);
+      setScreenPropsData({ intent: route.intent, message: text });
+      setScreenProps({ intent: route.intent, message: text });
+      brainSound.playEvent('screen.transition');
+    }
+
+    // 5. Send message to store
     sendMessage(text);
     setInputText('');
 
-    // تموج من المركز
-    setRipple(Date.now());
-
-    // تحديد العقدة المناسبة بناءً على النص
-    const lower = text.toLowerCase();
-    if (lower.includes('دماغ') || lower.includes('عصبي') || lower.includes('فكر')) {
-      setSelectedNode('neural');
-    } else if (lower.includes('مشروع') || lower.includes('بناء') || lower.includes('طور')) {
-      setSelectedNode('projects');
-    } else if (lower.includes('حالة') || lower.includes('صحة') || lower.includes('حيوية')) {
-      setSelectedNode('vitals');
-    } else if (lower.includes('وعي') || lower.includes('إدراك')) {
-      setSelectedNode('consciousness_sys');
-    } else if (lower.includes('ناقل') || lower.includes('إشارة')) {
-      setSelectedNode('neuralbus');
-    } else if (lower.includes('سرب') || lower.includes('وكيل')) {
-      setSelectedNode('swarm');
+    // 6. GSAP ripple animation on brain panel
+    if (brainPanelRef.current) {
+      gsap.fromTo(brainPanelRef.current,
+        { boxShadow: '0 0 0px rgba(13,123,181,0)' },
+        {
+          boxShadow: '0 0 30px rgba(13,123,181,0.3)',
+          duration: 0.3,
+          yoyo: true,
+          repeat: 1,
+          ease: 'power2.inOut',
+        }
+      );
     }
 
+    // 7. Call /api/super-mind/chat (with fallback to /api/mamoun-chat)
     try {
       const chatHistory = messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
         .slice(-10)
         .map((m) => ({ role: m.role, content: m.content }));
 
-      const response = await fetch('/api/mamoun-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, model: defaultModel, context: {} }),
-      });
+      // Try SuperMind endpoint first
+      let response: Response;
+      try {
+        response = await fetch('/api/super-mind/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            model: defaultModel,
+            intent: route.intent,
+            activated_brains: route.activatedBrains,
+            context: {},
+          }),
+        });
+      } catch {
+        // Fallback to mamoun-chat
+        response = await fetch('/api/mamoun-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, model: defaultModel, context: {} }),
+        });
+      }
 
       if (response.ok) {
         const data = await response.json();
+
         addMessage({
           id: data.id || `resp-${Date.now()}`,
           role: 'assistant',
@@ -417,6 +292,7 @@ export default function MamounCommandCenter() {
           timestamp: Date.now(),
           brain: data.brain || data.winning_brain,
           confidence: data.confidence,
+          isRealDeliberation: !!(data.brain_responses || data.consensus_level),
           metadata: {
             ...data.metadata,
             brain_responses: data.brain_responses,
@@ -425,9 +301,11 @@ export default function MamounCommandCenter() {
             conflict_detected: data.conflict_detected,
             mirror_reflection: data.mirror_reflection,
             source: data.source,
+            intent: route.intent,
           },
         });
 
+        // Update deliberation data
         if (data.brain_responses || data.consensus_level !== undefined) {
           updateDeliberationData({
             brainResponses: data.brain_responses,
@@ -439,6 +317,23 @@ export default function MamounCommandCenter() {
             winner: data.brain || data.winning_brain,
           });
         }
+
+        // Update brain confidences from response
+        if (data.brain_responses) {
+          const newConfs: Record<string, number> = { ...brainConfidences };
+          for (const [bid, resp] of Object.entries(data.brain_responses) as [string, any][]) {
+            if (resp?.confidence) newConfs[bid] = resp.confidence;
+          }
+          setBrainConfidences(newConfs);
+        }
+
+        // Update screen props with response data
+        if (route.screenComponent && data) {
+          setScreenPropsData(prev => ({ ...prev, responseData: data }));
+          setScreenProps({ intent: route.intent, message: text, responseData: data });
+        }
+
+        brainSound.playEvent('operation.complete');
       } else {
         addMessage({
           id: `err-${Date.now()}`,
@@ -447,6 +342,7 @@ export default function MamounCommandCenter() {
           timestamp: Date.now(),
           confidence: 0.1,
         });
+        brainSound.playEvent('operation.error');
       }
     } catch {
       addMessage({
@@ -456,39 +352,61 @@ export default function MamounCommandCenter() {
         timestamp: Date.now(),
         confidence: 0.1,
       });
+      brainSound.playEvent('operation.error');
     }
     setThinking(false);
-  }, [inputText, messages, defaultModel, sendMessage, addMessage, setThinking, updateDeliberationData]);
+    setActiveBrains(['neural']);
+  }, [
+    inputText, messages, defaultModel, brainConfidences,
+    sendMessage, addMessage, setThinking, updateDeliberationData,
+    brainSound, setCurrentIntent, setActiveScreen, setScreenProps,
+  ]);
 
+  // ─── Handle Key Down ─────────────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
   }, [handleSend]);
 
-  // ─── تنسيق الوقت ─────────────────────────────────────────
+  // ─── Handle Brain Click ──────────────────────────────────────
+  const handleBrainClick = useCallback((brainId: string) => {
+    brainSound.playBrainActivation(brainId);
+    setActiveBrains(prev =>
+      prev.includes(brainId) ? prev.filter(b => b !== brainId) : [...prev, brainId]
+    );
+  }, [brainSound]);
+
+  // ─── Handle Chat Action ──────────────────────────────────────
+  const handleChatAction = useCallback((action: string, messageId: string) => {
+    if (action === 'copy') {
+      const msg = messages.find(m => m.id === messageId);
+      if (msg) {
+        navigator.clipboard.writeText(msg.content).catch(() => {});
+      }
+    }
+  }, [messages]);
+
+  // ─── Handle Context Screen Back ──────────────────────────────
+  const handleScreenBack = useCallback(() => {
+    setActiveScreen(null);
+    setCurrentIntent(null);
+    setScreenAnimation('fadeIn');
+    brainSound.playEvent('screen.transition');
+  }, [setActiveScreen, setCurrentIntent, brainSound]);
+
+  // ─── Format Time ─────────────────────────────────────────────
   const formatTime = (ts: number) => {
     const d = new Date(ts);
     return d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
   };
 
-  // ─── حلقات المدار ─────────────────────────────────────────
-  const ringNodes = useMemo(() => ({
-    1: ORBITAL_NODES.filter(n => n.ring === 1),
-    2: ORBITAL_NODES.filter(n => n.ring === 2),
-    3: ORBITAL_NODES.filter(n => n.ring === 3),
-    4: ORBITAL_NODES.filter(n => n.ring === 4),
-    5: ORBITAL_NODES.filter(n => n.ring === 5),
-  }), []);
-
-  // ─── أبعاد المركز المداري ─────────────────────────────────
-  const orbitalSize = 240;
-  const ocx = orbitalSize / 2;
-  const ocy = orbitalSize / 2;
-
-  // ─── نبض تنفسي المركز ─────────────────────────────────────
+  // ─── Breathing Animation ─────────────────────────────────────
   const breathe = 1 + 0.03 * Math.sin(tick * 0.07);
 
   // ═══════════════════════════════════════════════════════════════
-  // الرسم
+  // Render
   // ═══════════════════════════════════════════════════════════════
   return (
     <div dir="rtl" style={{
@@ -498,263 +416,150 @@ export default function MamounCommandCenter() {
       fontFamily: "'Cairo', 'Tajawal', 'Space Grotesk', system-ui, sans-serif",
       overflow: 'hidden',
     }}>
-      {/* ─── المنطقة الرئيسية ─── */}
+      {/* ─── Main Three-Panel Area ─── */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
-        {/* ═══════ الشات (يسار 30%) ═══════ */}
-        <div style={{
-          width: '30%', minWidth: 320, maxWidth: 480,
+        {/* ═══════ Panel 1: Chat (30%) ═══════ */}
+        <div ref={chatPanelRef} style={{
+          width: '30%', minWidth: 280, maxWidth: 440,
           display: 'flex', flexDirection: 'column',
           background: T.chatBg,
           borderLeft: `1px solid ${T.white08}`,
         }}>
-          {/* رأس الشات */}
+          {/* Chat Header */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            padding: '12px 16px',
+            padding: '10px 14px',
             borderBottom: `1px solid ${T.white08}`,
-            background: `${T.chatBg}`,
+            background: T.chatBg,
           }}>
-            <div style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: isConscious ? T.accent : T.red,
-              boxShadow: isConscious ? T.accentGlow : 'none',
-            }} />
-            <span style={{ fontSize: 14, fontWeight: 700, color: T.white }}>العقل الخارق</span>
-            <span style={{ fontSize: 10, color: T.textDim, flex: 1 }}>مأمون v40.0</span>
+            <motion.div
+              animate={{
+                boxShadow: isConscious ? T.accentGlow : 'none',
+              }}
+              style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: isConscious ? T.accent : T.red,
+              }}
+            />
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>العقل الخارق</span>
+            <span style={{ fontSize: 9, color: T.textDim, flex: 1 }}>مأمون v61</span>
+
+            {/* Sound Toggle */}
+            <button
+              onClick={() => useAppStore.getState().soundEnabled !== undefined && useAppStore.setState({ soundEnabled: !useAppStore.getState().soundEnabled })}
+              style={{
+                background: 'transparent', border: 'none',
+                color: soundEnabled ? T.accent : T.textDim,
+                cursor: 'pointer', fontSize: 12,
+              }}
+              title={soundEnabled ? 'كتم الصوت' : 'تشغيل الصوت'}
+            >
+              {soundEnabled ? '🔊' : '🔇'}
+            </button>
+
             <button onClick={clearChat} style={{
               background: T.primaryDim, border: `1px solid ${T.white08}`,
               color: T.textDim, borderRadius: 6, padding: '2px 8px',
               cursor: 'pointer', fontSize: 9,
-            }}>مسح</button>
+            }}>
+              مسح
+            </button>
           </div>
 
-          {/* ─── المركز المداري (SVG) ─── */}
-          <div style={{
-            padding: '8px 16px',
-            display: 'flex', justifyContent: 'center',
-            position: 'relative',
-          }}>
-            <svg width={orbitalSize} height={orbitalSize} viewBox={`0 0 ${orbitalSize} ${orbitalSize}`}
-              style={{ display: 'block' }}>
-              {/* خلفية متوهجة */}
-              <defs>
-                <radialGradient id="coreGlow">
-                  <stop offset="0%" stopColor={T.primary} stopOpacity="0.15" />
-                  <stop offset="100%" stopColor={T.primary} stopOpacity="0" />
-                </radialGradient>
-                <filter id="glow">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
-              </defs>
-
-              {/* تموج عند رسالة جديدة */}
-              {ripple > 0 && (
-                <circle cx={ocx} cy={ocy} r={20} fill="none" stroke={T.primary}
-                  strokeWidth={1} opacity={Math.max(0, 1 - (tick - ripple / 50) * 0.1)}>
-                  <animate attributeName="r" from="20" to={orbitalSize / 2} dur="1.5s" fill="freeze" />
-                  <animate attributeName="opacity" from="0.4" to="0" dur="1.5s" fill="freeze" />
-                </circle>
-              )}
-
-              {/* هالة المركز */}
-              <circle cx={ocx} cy={ocy} r={45} fill="url(#coreGlow)" />
-
-              {/* المركز — نبض تنفسي */}
-              <g transform={`translate(${ocx}, ${ocy}) scale(${breathe})`} style={{ transformOrigin: '0 0' }}>
-                <circle cx={0} cy={0} r={30} fill={T.primaryDim}
-                  stroke={T.primary} strokeWidth={1.5} strokeOpacity={0.4} />
-                {/* نسبة الوعي */}
-                <text x={0} y={-6} textAnchor="middle" fill={T.accent}
-                  fontSize={16} fontWeight="700">
-                  {Math.round(consciousness * 100)}%
-                </text>
-                <text x={0} y={8} textAnchor="middle" fill={T.textDim}
-                  fontSize={8}>مأمون</text>
-                <text x={0} y={18} textAnchor="middle" fill={T.textDim}
-                  fontSize={7}>{vitality}% حيوية</text>
-              </g>
-
-              {/* حلقة الوعي المتقطعة */}
-              <circle cx={ocx} cy={ocy} r={38} fill="none"
-                stroke={T.primary} strokeWidth={1} strokeOpacity={0.2}
-                strokeDasharray="6 10"
+          {/* Intent Badge */}
+          <AnimatePresence>
+            {currentRoute && currentRoute.intent !== 'default' && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
                 style={{
-                  transform: `rotate(${tick * 0.5}deg)`,
-                  transformOrigin: `${ocx}px ${ocy}px`,
-                }} />
+                  padding: '6px 14px',
+                  background: T.primaryDim,
+                  borderBottom: `1px solid ${T.white08}`,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  overflow: 'hidden',
+                }}
+              >
+                <span style={{ fontSize: 12 }}>{currentRoute.icon}</span>
+                <span style={{ fontSize: 10, color: T.primary, fontWeight: 600 }}>
+                  {currentRoute.labelAr}
+                </span>
+                <span style={{ fontSize: 8, color: T.textDim }}>
+                  ثقة: {Math.round(currentRoute.confidence * 100)}%
+                </span>
+                <button
+                  onClick={() => { setCurrentIntent(null); setCurrentRoute(null); setActiveScreen(null); }}
+                  style={{
+                    background: 'transparent', border: 'none',
+                    color: T.textDim, cursor: 'pointer', fontSize: 10,
+                    marginRight: 'auto',
+                  }}
+                >
+                  ✕
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              {/* الحلقات المدارية الخمسة */}
-              <OrbitalRing
-                nodes={ringNodes[1]} radius={50} centerX={ocx} centerY={ocy}
-                tick={tick} selectedNode={selectedNode} hoveredNode={hoveredNode}
-                winnerNode={winnerNodeId} onNodeClick={setSelectedNode}
-                onNodeHover={setHoveredNode} speedFactor={0.003}
-                ringColor={T.ring1Color}
-              />
-              <OrbitalRing
-                nodes={ringNodes[2]} radius={70} centerX={ocx} centerY={ocy}
-                tick={tick} selectedNode={selectedNode} hoveredNode={hoveredNode}
-                winnerNode={winnerNodeId} onNodeClick={setSelectedNode}
-                onNodeHover={setHoveredNode} speedFactor={-0.002}
-                ringColor={T.ring2Color}
-              />
-              <OrbitalRing
-                nodes={ringNodes[3]} radius={90} centerX={ocx} centerY={ocy}
-                tick={tick} selectedNode={selectedNode} hoveredNode={hoveredNode}
-                winnerNode={winnerNodeId} onNodeClick={setSelectedNode}
-                onNodeHover={setHoveredNode} speedFactor={0.0015}
-                ringColor={T.ring3Color}
-              />
-              <OrbitalRing
-                nodes={ringNodes[4]} radius={105} centerX={ocx} centerY={ocy}
-                tick={tick} selectedNode={selectedNode} hoveredNode={hoveredNode}
-                winnerNode={winnerNodeId} onNodeClick={setSelectedNode}
-                onNodeHover={setHoveredNode} speedFactor={-0.001}
-                ringColor={T.ring4Color}
-              />
-              <OrbitalRing
-                nodes={ringNodes[5]} radius={115} centerX={ocx} centerY={ocy}
-                tick={tick} selectedNode={selectedNode} hoveredNode={hoveredNode}
-                winnerNode={winnerNodeId} onNodeClick={setSelectedNode}
-                onNodeHover={setHoveredNode} speedFactor={0.0008}
-                ringColor={T.ring5Color}
-              />
-            </svg>
-          </div>
-
-          {/* ─── منطقة الرسائل ─── */}
+          {/* Messages Area */}
           <div style={{
             flex: 1, overflowY: 'auto', padding: '8px 12px',
             display: 'flex', flexDirection: 'column', gap: 8,
           }}>
             {messages.length === 0 && (
               <div style={{ textAlign: 'center', padding: 20, color: T.textDim, fontSize: 11 }}>
-                <div style={{ fontSize: 28, marginBottom: 8 }}>⚡</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: T.primary, marginBottom: 6 }}>العقل الخارق</div>
-                <div style={{ lineHeight: 1.8 }}>أنا أتحكم بكل شيء: الباك إند، الفرونت إند، الأدمغة، GitHub، البحث، الإصلاح</div>
+                <motion.div
+                  animate={{ scale: breathe }}
+                  style={{ fontSize: 32, marginBottom: 8 }}
+                >
+                  ⚡
+                </motion.div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: T.primary, marginBottom: 6 }}>العقل الخارق</div>
+                <div style={{ lineHeight: 1.8 }}>
+                  أنا أتحكم بكل شيء: الباك إند، الفرونت إند، الأدمغة، GitHub، البحث، الإصلاح
+                </div>
                 <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center' }}>
-                  {['طوّر نفسك', 'اسحب التحديثات', 'ابحث عن...', 'حلّل نفسك', 'غيّر وضعك لباحث', 'أصلح الأخطاء'].map(cmd => (
-                    <span key={cmd} style={{ background: T.primaryDim, border: `1px solid ${T.white08}`, borderRadius: 8, padding: '2px 8px', fontSize: 9, color: T.primary }}>{cmd}</span>
+                  {['أرني المشاريع', 'إحصائيات الموقع', 'أصلح الأخطاء', 'ابحث عن...', 'أنشئ أداة', 'افتح الطرفية'].map(cmd => (
+                    <button
+                      key={cmd}
+                      onClick={() => { setInputText(cmd); }}
+                      style={{
+                        background: T.primaryDim, border: `1px solid ${T.white08}`,
+                        borderRadius: 8, padding: '3px 8px', fontSize: 9,
+                        color: T.primary, cursor: 'pointer',
+                      }}
+                    >
+                      {cmd}
+                    </button>
                   ))}
                 </div>
               </div>
             )}
 
             {messages.map((msg) => (
-              <div key={msg.id} style={{
-                maxWidth: '85%',
-                alignSelf: msg.role === 'user' ? 'flex-start' : 'flex-end',
-              }}>
-                <div style={{
-                  padding: '8px 12px',
-                  background: msg.role === 'user'
-                    ? T.accentMid
-                    : T.bubble,
-                  border: msg.role === 'user'
-                    ? `1px solid ${T.accentStrong}`
-                    : `1px solid ${T.primaryDim}`,
-                  borderRadius: msg.role === 'user'
-                    ? '16px 16px 4px 16px'
-                    : '16px 16px 16px 4px',
-                }}>
-                  {/* شارة الدماغ */}
-                  {msg.role === 'assistant' && (msg.brain || msg.confidence) && (
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: 4,
-                      marginBottom: 4, fontSize: 9,
-                    }}>
-                      <span style={{ color: T.primary, fontWeight: 600 }}>
-                        {msg.brain || 'مأمون'}
-                      </span>
-                      {msg.confidence && (
-                        <span style={{ color: T.textDim }}>
-                          {Math.round(msg.confidence * 100)}%
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* المحتوى */}
-                  {msg.role === 'assistant' ? (
-                    <div style={{
-                      fontSize: 12, lineHeight: 1.8,
-                      color: T.text,
-                      whiteSpace: 'pre-wrap',
-                    }}>
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <p style={{
-                      fontSize: 12, lineHeight: 1.7,
-                      color: T.white90, margin: 0,
-                      whiteSpace: 'pre-wrap',
-                    }}>{msg.content}</p>
-                  )}
-
-                  <div style={{
-                    fontSize: 7, color: T.textDim,
-                    marginTop: 4, textAlign: msg.role === 'user' ? 'left' : 'right',
-                  }}>
-                    {formatTime(msg.timestamp)}
-                  </div>
-                </div>
-              </div>
+              <ChatCard
+                key={msg.id}
+                message={msg}
+                onAction={handleChatAction}
+              />
             ))}
 
-            {/* مؤشر التفكير الحي — 5 أدمغة تتنافس */}
-            {isThinking && (
-              <div style={{ alignSelf: 'flex-end', width: '85%' }}>
-                <div style={{
-                  padding: '10px 16px',
-                  background: T.bubble,
-                  border: `1px solid ${T.primaryStrong}`,
-                  borderRadius: '16px 16px 16px 4px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <div style={{ fontSize: 12, color: T.primary, fontWeight: 700 }}>🧠 أدمغة مأمون تتنافس...</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    {['عصبي', 'سببي', 'رمزي', 'بيزي', 'عالمي'].map((name, i) => {
-                      const isActive = (Math.floor(tick / 8) % 5) === i;
-                      return (
-                        <div key={name} style={{
-                          padding: '2px 6px',
-                          borderRadius: 6,
-                          fontSize: 9,
-                          background: isActive ? T.primaryMid : T.primaryDim,
-                          color: isActive ? T.white : T.textDim,
-                          border: isActive ? `1px solid ${T.primary}` : `1px solid ${T.white08}`,
-                          transition: 'all 0.2s',
-                          fontWeight: isActive ? 700 : 400,
-                          boxShadow: isActive ? T.primaryGlow : 'none',
-                        }}>{name}</div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ display: 'flex', gap: 3, marginTop: 8, alignItems: 'center' }}>
-                    {[0, 1, 2, 3, 4].map(i => (
-                      <div key={i} style={{
-                        width: 4, height: 4, borderRadius: '50%',
-                        background: T.primary,
-                        opacity: 0.3 + 0.7 * Math.sin(tick * 0.12 + i * 0.6),
-                        transition: 'opacity 0.1s',
-                      }} />
-                    ))}
-                    <span style={{ fontSize: 8, color: T.textDim, marginRight: 4 }}>مداولة جارية</span>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Thinking Animation */}
+            <AnimatePresence>
+              {isThinking && (
+                <ThinkingAnimation
+                  activeBrains={activeBrains}
+                  tick={tick}
+                />
+              )}
+            </AnimatePresence>
 
             <div ref={messagesEndRef} />
           </div>
 
-          {/* ─── حقل الإدخال ─── */}
+          {/* Input Field */}
           <div style={{
             padding: '8px 12px',
             borderTop: `1px solid ${T.white08}`,
@@ -765,7 +570,7 @@ export default function MamounCommandCenter() {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="اكتب رسالتك هنا"
+                placeholder="اكتب رسالتك هنا..."
                 dir="rtl"
                 style={{
                   flex: 1,
@@ -779,8 +584,11 @@ export default function MamounCommandCenter() {
                   fontFamily: 'inherit',
                 }}
               />
-              <button onClick={handleSend}
+              <motion.button
+                onClick={handleSend}
                 disabled={isThinking || !inputText.trim()}
+                whileHover={inputText.trim() ? { scale: 1.05 } : {}}
+                whileTap={inputText.trim() ? { scale: 0.95 } : {}}
                 style={{
                   width: 36, height: 36,
                   borderRadius: '50%',
@@ -791,210 +599,155 @@ export default function MamounCommandCenter() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 14,
                   opacity: inputText.trim() ? 1 : 0.4,
-                }}>
+                }}
+              >
                 ➤
-              </button>
+              </motion.button>
             </div>
           </div>
 
-          {/* ─── شريط المقاييس ─── */}
+          {/* Status Bar */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '6px 16px',
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '5px 14px',
             borderTop: `1px solid ${T.white04}`,
-            fontSize: 10, color: T.textDim,
+            fontSize: 9, color: T.textDim,
           }}>
             <span>🧠 {brainData.length || 5}</span>
             <span>⚡ {vitality}%</span>
             <span>📡 {signalCount}</span>
-            {selectedNode && (
+            {currentRoute && currentRoute.intent !== 'default' && (
               <span style={{ color: T.primary, fontWeight: 600 }}>
-                {ORBITAL_NODES.find(n => n.id === selectedNode)?.icon}{' '}
-                {ORBITAL_NODES.find(n => n.id === selectedNode)?.nameAr}
+                {currentRoute.icon} {currentRoute.labelAr}
               </span>
             )}
           </div>
         </div>
 
-        {/* ═══════ اللوحة الديناميكية (يمين 70%) ═══════ */}
-        <div style={{
-          flex: 1, position: 'relative',
-          background: T.bg, overflow: 'hidden',
+        {/* ═══════ Panel 2: Context Screen (40%) ═══════ */}
+        <div ref={contextPanelRef} style={{
+          width: '40%',
+          display: 'flex', flexDirection: 'column',
+          background: T.bg,
+          borderLeft: `1px solid ${T.white08}`,
+          overflow: 'hidden',
         }}>
-          {/* خلفية الخيوط العصبية */}
-          <canvas ref={canvasRef} style={{
-            position: 'absolute', top: 0, left: 0,
-            width: '100%', height: '100%',
-            pointerEvents: 'none', opacity: 0.6,
-          }} />
+          <ContextScreen
+            activeScreen={activeScreen}
+            animation={screenAnimation}
+            screenProps={screenPropsData}
+            onBack={handleScreenBack}
+          />
+        </div>
 
-          {/* المحتوى الديناميكي */}
-          <div style={{ position: 'relative', zIndex: 1, height: '100%' }}>
-            {selectedPanel === 'brains' && (
-              <BrainsOrbPanel
-                brains={brainData}
-                vitality={vitality}
-                consciousness={consciousness}
-                onBack={() => setSelectedNode(null)}
-              />
-            )}
-            {selectedPanel === 'neuralbus' && (
-              <NeuralBusPanel
-                signalCount={signalCount}
-                onBack={() => setSelectedNode(null)}
-              />
-            )}
-            {selectedPanel === 'monologue' && (
-              <InnerMonologuePanel
-                onBack={() => setSelectedNode(null)}
-              />
-            )}
-            {selectedPanel === 'life' && (
-              <LifePanel
-                vitality={vitality}
-                onBack={() => setSelectedNode(null)}
-              />
-            )}
-            {selectedPanel === 'consciousness' && (
-              <ConsciousnessPanel
-                consciousness={consciousness}
-                onBack={() => setSelectedNode(null)}
-              />
-            )}
-            {selectedPanel === 'projects' && (
-              <ProjectsPanel
-                onBack={() => setSelectedNode(null)}
-              />
-            )}
-            {selectedPanel === 'swarm' && (
-              <SwarmPanel
-                onBack={() => setSelectedNode(null)}
-              />
-            )}
-            {selectedPanel === 'sites' && (
-              <SitesPanel
-                onBack={() => setSelectedNode(null)}
-              />
-            )}
-            {/* لوحات عامة للركائز والقدرات */}
-            {(selectedPanel === 'agi' || selectedPanel === 'capability') && (
-              <GenericDetailPanel
-                nodeId={selectedNode}
-                onBack={() => setSelectedNode(null)}
-              />
+        {/* ═══════ Panel 3: Brain Network (30%) ═══════ */}
+        <div ref={brainPanelRef} style={{
+          width: '30%',
+          display: 'flex', flexDirection: 'column',
+          background: T.bg,
+          overflow: 'hidden',
+        }}>
+          {/* Brain Network Header */}
+          <div style={{
+            padding: '10px 14px',
+            borderBottom: `1px solid ${T.white08}`,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.white }}>🧠 شبكة الأدمغة</span>
+            <span style={{ fontSize: 9, color: T.textDim, flex: 1 }}>ثلاثي الأبعاد</span>
+            <div style={{
+              fontSize: 8, color: T.accent,
+              background: T.accentDim,
+              padding: '2px 6px',
+              borderRadius: 4,
+            }}>
+              {activeBrains.length} نشط
+            </div>
+          </div>
+
+          {/* 3D Brain Network */}
+          <div style={{ flex: 1, position: 'relative' }}>
+            <BrainNetwork
+              activeBrains={activeBrains}
+              brainConfidences={brainConfidences}
+              onBrainClick={handleBrainClick}
+              vitality={vitality}
+            />
+          </div>
+
+          {/* Brain Status Mini Cards */}
+          <div style={{
+            padding: '6px 10px',
+            borderTop: `1px solid ${T.white08}`,
+            display: 'flex', flexDirection: 'column', gap: 3,
+            maxHeight: 120,
+            overflowY: 'auto',
+          }}>
+            {brainData.length > 0 ? brainData.map(brain => {
+              const isActive = activeBrains.includes(brain.id);
+              const colors: Record<string, string> = {
+                neural: T.brainNeural,
+                causal: T.brainCausal,
+                symbolic: T.brainSymbolic,
+                bayesian: T.brainBayesian,
+                world_model: T.brainWorldModel,
+              };
+              const color = colors[brain.id] || T.primary;
+              return (
+                <div key={brain.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '3px 6px',
+                  background: isActive ? `${color}10` : 'transparent',
+                  borderRadius: 4,
+                  border: isActive ? `1px solid ${color}30` : '1px solid transparent',
+                }}>
+                  <div style={{
+                    width: 6, height: 6, borderRadius: '50%',
+                    background: color,
+                    opacity: isActive ? 1 : 0.4,
+                  }} />
+                  <span style={{
+                    fontSize: 9, color: isActive ? color : T.textDim,
+                    fontWeight: isActive ? 600 : 400, flex: 1,
+                  }}>
+                    {brain.nameAr || brain.name}
+                  </span>
+                  {brain.confidence > 0 && (
+                    <span style={{ fontSize: 8, color: T.textDim }}>
+                      {Math.round(brain.confidence * 100)}%
+                    </span>
+                  )}
+                </div>
+              );
+            }) : (
+              <div style={{ fontSize: 9, color: T.textDim, textAlign: 'center', padding: 8 }}>
+                في انتظار بيانات الأدمغة...
+              </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* ─── الشريط السفلي ─── */}
+      {/* ─── Bottom Bar ─── */}
       <div style={{
-        height: 36, display: 'flex', alignItems: 'center',
+        height: 32, display: 'flex', alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 20px',
+        padding: '0 16px',
         background: T.chatBg,
         borderTop: `1px solid ${T.white08}`,
-        fontSize: 10, color: T.textDim,
+        fontSize: 9, color: T.textDim,
       }}>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <span>NeuralBus: {signalCount} | Active: {brainData.filter(b => b.status === 'active').length || 5} brains</span>
-          <span>Projects: {projectCount}</span>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <span>مأمون v61 — العقل الخارق</span>
+          <span style={{ color: isConscious ? T.accent : T.red }}>
+            {isConscious ? '● واعي' : '○ نائم'}
+          </span>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ width: 12, height: 12, borderRadius: 2, background: T.bg, border: `1px solid ${T.white08}` }} />
-          <span style={{ width: 12, height: 12, borderRadius: 2, background: T.primary, border: `1px solid ${T.white08}` }} />
-          <span style={{ width: 12, height: 12, borderRadius: 2, background: T.accent, border: `1px solid ${T.white08}` }} />
-          <span style={{ width: 12, height: 12, borderRadius: 2, background: T.text, border: `1px solid ${T.white08}` }} />
+        <div style={{ display: 'flex', gap: 12 }}>
+          <span>⚡ حيوية: {vitality}%</span>
+          <span>🧠 وعي: {Math.round(consciousness * 100)}%</span>
+          <span>📡 إشارات: {signalCount}</span>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// لوحة تفاصيل عامة للركائز والقدرات
-// ═══════════════════════════════════════════════════════════════════════════════
-function GenericDetailPanel({ nodeId, onBack }: { nodeId: string | null; onBack: () => void }) {
-  const [data, setData] = useState<Record<string, unknown> | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const node = ORBITAL_NODES.find(n => n.id === nodeId);
-
-  useEffect(() => {
-    const load = async () => {
-      if (!node?.apiPath) { setLoading(false); return; }
-      try {
-        const res = await fetch(node.apiPath);
-        if (res.ok) {
-          const d = await res.json();
-          setData(d);
-        }
-      } catch { /* fallback */ }
-      setLoading(false);
-    };
-    load();
-  }, [node?.apiPath]);
-
-  return (
-    <div dir="rtl" style={{
-      background: T.bg, height: '100%',
-      color: T.text, fontFamily: 'Tajawal, sans-serif',
-      overflowY: 'auto',
-    }}>
-      {/* رأس */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '16px 20px',
-        borderBottom: `1px solid ${T.white08}`,
-      }}>
-        <button onClick={onBack} style={{
-          background: T.primaryDim,
-          border: `1px solid ${T.primaryStrong}`,
-          color: T.primary, borderRadius: 8,
-          padding: '6px 10px', cursor: 'pointer',
-          display: 'flex', alignItems: 'center',
-        }}>→</button>
-        <span style={{ fontSize: 20 }}>{node?.icon}</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: T.white }}>
-            {node?.nameAr || 'تفاصيل'}
-          </div>
-          <div style={{ fontSize: 11, color: T.textDim }}>
-            {node?.apiPath || 'نظام داخلي'}
-          </div>
-        </div>
-      </div>
-
-      {/* محتوى */}
-      <div style={{ padding: 20 }}>
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 40, color: T.textDim }}>
-            جاري التحميل...
-          </div>
-        ) : data ? (
-          <div style={{
-            background: T.chatBg, borderRadius: 12,
-            padding: 20, border: `1px solid ${T.white08}`,
-          }}>
-            <pre style={{
-              fontSize: 11, color: T.text,
-              whiteSpace: 'pre-wrap', direction: 'ltr',
-              textAlign: 'left',
-            }}>
-              {JSON.stringify(data, null, 2)}
-            </pre>
-          </div>
-        ) : (
-          <div style={{ textAlign: 'center', padding: 40 }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>{node?.icon}</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: T.white, marginBottom: 8 }}>
-              {node?.nameAr}
-            </div>
-            <div style={{ fontSize: 11, color: T.textDim }}>
-              هذا النظام يعمل داخلياً — لا يوجد API عام
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
