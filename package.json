@@ -1,6 +1,6 @@
 {
   "name": "babsharqii-mamoun",
-  "version": "40.0.0",
+  "version": "62.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",

@@ -1,4 +1,8 @@
-"""Research API — Research Monitor + Deep Research endpoints."""
+"""Research API — Research Monitor + Deep Research endpoints.
+
+v62 FIX: Fixed parameter mismatch — research() expects depth as string,
+not int. The API now maps int depth (1-4) to ResearchDepth enum values.
+"""
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -31,20 +35,11 @@ class ResearchDeepRequest(BaseModel):
 
 
 class DeepResearchRequest(BaseModel):
-    """v36.1: Deep research request with proper input formatting.
+    """v62: Deep research request with proper input formatting.
     
     The 'query' field accepts a clear research question or topic string.
     The 'depth' controls how thorough the research is (1-4).
     The 'verify' flag enables cross-source fact verification.
-    
-    Example:
-        query: "How does transformer attention mechanism work?"
-        depth: 3
-        verify: True
-    
-    The query should be a single clear question, not a list of keywords.
-    For best results, write the query as a full question in the language
-    of your choice (Arabic or English).
     """
     query: str = Field(
         ...,
@@ -66,6 +61,17 @@ class DeepResearchRequest(BaseModel):
         default=True,
         description="التحقق المتقاطع من الحقائق"
     )
+
+
+def _map_depth(depth_int: int) -> str:
+    """Map integer depth (1-4) to ResearchDepth string."""
+    mapping = {
+        1: "quick",
+        2: "standard", 
+        3: "deep",
+        4: "deep",  # 4 is comprehensive, maps to "deep" (the deepest available)
+    }
+    return mapping.get(depth_int, "standard")
 
 
 @router.get("/status")
@@ -103,16 +109,7 @@ async def trust_network_info():
 async def deep_research(req: DeepResearchRequest):
     """بحث عميق — Run a deep research query with multi-source verification.
     
-    Accepts a structured request with:
-    - query: A clear research question (not keywords)
-    - depth: How thorough the search should be (1-4)
-    - verify: Whether to cross-verify facts across sources
-    
-    Returns a comprehensive research report with:
-    - Sources with credibility ratings
-    - Extracted facts with confidence scores
-    - Contradiction detection
-    - Analysis and recommendations
+    v62 FIX: Correctly maps integer depth to string ResearchDepth values.
     """
     try:
         from mamoun.core.deep_research_engine import DeepResearchEngine
@@ -121,17 +118,54 @@ async def deep_research(req: DeepResearchRequest):
         llm = get_llm_client()
         engine = DeepResearchEngine(llm_client=llm)
         
+        # Map int depth to string — THIS WAS THE BUG
+        depth_str = _map_depth(req.depth)
+        
         result = await engine.research(
             query=req.query,
-            depth=req.depth,
-            verify=req.verify,
+            depth=depth_str,
         )
         
-        return {
+        # Build response
+        response_data = {
             "status": "success",
             "message": f"تم البحث العميق عن: {req.query[:100]}",
-            "report": result,
+            "report": {
+                "query": result.query,
+                "depth": result.depth.value if hasattr(result.depth, 'value') else str(result.depth),
+                "summary": result.summary,
+                "key_findings": result.key_findings,
+                "contradictions": result.contradictions,
+                "confidence": result.confidence,
+                "sources_count": len(result.sources),
+                "sources_searched": result.sources_searched,
+                "content_extracted": result.content_extracted,
+                "total_latency_ms": result.total_latency_ms,
+                "claims": [
+                    {
+                        "claim": c.claim,
+                        "verification": c.verification,
+                        "confidence": c.confidence,
+                        "supporting_sources": c.sources,
+                        "contradicting_sources": c.contradicting_sources,
+                    }
+                    for c in result.claims
+                ] if result.claims else [],
+                "sources": [
+                    {
+                        "url": s.url,
+                        "title": s.title,
+                        "quality_score": s.quality_score,
+                        "extraction_method": s.extraction_method,
+                        "extraction_success": s.extraction_success,
+                    }
+                    for s in result.sources
+                ] if result.sources else [],
+            },
+            "verify": req.verify,  # Echo back for client reference
         }
+        
+        return response_data
         
     except ImportError as e:
         return {
