@@ -58,6 +58,7 @@ class EventType(str, Enum):
     # Healing events
     HEALING_CHECK = "healing.check"
     HEALING_REPAIR = "healing.repair"
+    HEALTH_CRITICAL = "health.critical"  # v59.1: Critical health alert
 
 
 @dataclass

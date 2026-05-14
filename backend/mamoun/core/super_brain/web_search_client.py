@@ -1,8 +1,9 @@
 """
-Web Search Client v58 — Stable, multi-source web search with REAL z-ai SDK.
+Web Search Client v59.1 — Stable, multi-source web search with REAL z-ai SDK.
 
-CRITICAL UPGRADE from v57:
-- v57: Tried to import z-ai SDK as Python module — BROKEN (it's Node.js)
+CRITICAL UPGRADE from v58:
+- v59.1: Applied OutcomeRecorder for consistent performance tracking
+- v59.1: Automatic error recording and quality prediction
 - v58: Uses ZaiSdkWrapper (Node.js subprocess bridge) for REAL z-ai calls
 - Three-tier search: z-ai SDK (primary) → DuckDuckGo (fallback) → Cache
 - Proper caching with TTL and LRU eviction
@@ -11,7 +12,7 @@ CRITICAL UPGRADE from v57:
 - Deduplication by URL
 - Integrated with MetaCognitionEngine for real performance tracking
 
-v58 — Super Mind العقل الخارق مامون
+v59.1 — Super Mind العقل الخارق مامون
 """
 
 import time
@@ -367,13 +368,24 @@ class WebSearchClient:
         if results:
             self._cache.put(query, num, response)
 
-        # 8. Record in meta-cognition
+        # 8. v59.1: Record outcome using OutcomeRecorder
         self._search_count += 1
         avg_quality = sum(r.quality_score for r in results) / len(results) if results else 0.0
 
         if self._meta_cognition:
             try:
+                from .outcome_recorder import OutcomeRecorder
+                # Use context manager for automatic timing + error handling
+                rec_cm = OutcomeRecorder(
+                    self._meta_cognition, "web_search_client", "search",
+                    predicted_quality=self._meta_cognition.predict_quality("web_search_client"),
+                )
+                rec_cm._start_time = start  # Use already measured start time
+                rec_cm.success = len(results) > 0
+                rec_cm.quality_score = avg_quality
+                rec_cm.metadata = {"source": source_used, "result_count": len(results), "query": query[:100]}
                 from .meta_cognition_engine import OutcomeRecord
+                latency = (time.time() - start) * 1000
                 self._meta_cognition.record_outcome(OutcomeRecord(
                     component="web_search_client",
                     operation="search",

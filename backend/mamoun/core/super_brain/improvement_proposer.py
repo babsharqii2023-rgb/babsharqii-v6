@@ -1,15 +1,15 @@
 """
-Improvement Proposer v58 — Data-driven improvement proposals with SelfModifier integration.
+Improvement Proposer v59.1 — Data-driven improvement proposals with SelfModifier integration.
 
-CRITICAL UPGRADE from v57:
-- v57: Proposals generated but never connected to SelfModifier for execution
+CRITICAL UPGRADE from v58:
+- v59.1: Version consistency with kernel v59.1
 - v58: Connected to SelfModifier for applying approved proposals
 - Better evaluation with cross-provider verification
 - Integration with DeepResearch for finding improvement patterns
 - Improved feature flags with persistence
 - Quality score based on proposal outcomes
 
-v58 — Super Mind العقل الخارق مامون
+v59.1 — Super Mind العقل الخارق مامون
 """
 
 import os

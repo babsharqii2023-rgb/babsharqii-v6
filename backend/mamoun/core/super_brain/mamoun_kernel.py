@@ -403,7 +403,7 @@ class MamounKernel:
             logger.error(f"Cannot run kernel in state: {self._state}")
             return
 
-        logger.info("Mamoun Kernel v58 main loop started")
+        logger.info("Mamoun Kernel v59.1 main loop started")
 
         while self._state == KernelState.RUNNING:
             try:
@@ -525,7 +525,7 @@ class MamounKernel:
             llm_health = self._llm_client.get_health_report()
 
         return {
-            "version": "v58",
+            "version": "v59.1",
             "state": self._state.value,
             "uptime_seconds": uptime,
             "loop_count": self._loop_count,
@@ -545,7 +545,7 @@ class MamounKernel:
     def get_self_assessment(self) -> dict:
         """Get honest self-assessment."""
         assessment = {
-            "version": "v58",
+            "version": "v59.1",
             "kernel_state": self._state.value,
             "components_available": list(self._components.keys()),
         }

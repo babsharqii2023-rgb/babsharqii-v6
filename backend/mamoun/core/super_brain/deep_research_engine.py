@@ -1,8 +1,9 @@
 """
-Deep Research Engine v58 — Stable, multi-source, verified research.
+Deep Research Engine v59.1 — Stable, multi-source, verified research.
 
-CRITICAL UPGRADE from v57:
-- v57: z-ai SDK import broken (tried Python import on Node.js module)
+CRITICAL UPGRADE from v58:
+- v59.1: Applied OutcomeRecorder for consistent performance tracking
+- v59.1: Automatic error recording and quality prediction
 - v58: Uses ZaiSdkWrapper for both web_search and web_reader
 - Cross-source verification with LLM-powered claim checking
 - Better content extraction using z-ai web_reader
@@ -10,7 +11,7 @@ CRITICAL UPGRADE from v57:
 - Improved claim extraction from LLM responses
 - Integrated with MetaCognitionEngine for real performance tracking
 
-v58 — Super Mind العقل الخارق مامون
+v59.1 — Super Mind العقل الخارق مامون
 """
 
 import time
@@ -476,9 +477,10 @@ Be thorough and cite specific sources by URL when possible."""},
             content_extracted=sum(1 for s in sources if s.extraction_success),
         )
 
-        # Record in meta-cognition
+        # v59.1: Record outcome using OutcomeRecorder (consistent tracking)
         if self._meta_cognition:
             try:
+                from .outcome_recorder import OutcomeRecorder
                 from .meta_cognition_engine import OutcomeRecord
                 self._meta_cognition.record_outcome(OutcomeRecord(
                     component="deep_research_engine",

@@ -1,8 +1,8 @@
 """
-MetaCognition Engine v58 — REAL self-awareness through actual measurement.
+MetaCognition Engine v59.1 — REAL self-awareness through actual measurement.
 
-CRITICAL UPGRADE from v57:
-- v57: Fixed NeuralBus import path (was broken), added basic structure
+CRITICAL UPGRADE from v58:
+- v59.1: Version consistency with kernel v59.1
 - v58: Fixed all import paths (relative imports work correctly)
 - Added persistence (save/load to disk)
 - Added periodic self-assessment scheduling
@@ -12,7 +12,7 @@ CRITICAL UPGRADE from v57:
 
 This is NOT fake awareness — every score reflects real data.
 
-v58 — Super Mind العقل الخارق مامون
+v59.1 — Super Mind العقل الخارق مامون
 """
 
 import os
@@ -500,7 +500,7 @@ Top errors: {dict(list(profile.error_types.items())[:5])}"""
             data = {
                 "profiles": {},
                 "saved_at": time.time(),
-                "version": "v58",
+                "version": "v59.1",
             }
 
             for name, p in self._profiles.items():

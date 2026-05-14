@@ -1,15 +1,16 @@
 """
-Tool Creator v58 — LLM-powered tool creation with real registration and auto-testing.
+Tool Creator v59.1 — LLM-powered tool creation with real registration and auto-testing.
 
-CRITICAL UPGRADE from v57:
-- v57: Import paths for registry were broken (.shared.registry)
+CRITICAL UPGRADE from v58:
+- v59.1: Applied OutcomeRecorder for consistent performance tracking
+- v59.1: Automatic error recording (success=False on exception)
 - v58: Fixed all import paths with proper fallback
 - Added tool versioning and dependency tracking
 - Added auto-test execution with real results
 - Better validation with security + docstring + type hints check
 - Integrated with MetaCognitionEngine for real performance tracking
 
-v58 — Super Mind العقل الخارق مامون
+v59.1 — Super Mind العقل الخارق مامون
 """
 
 import time
@@ -205,17 +206,20 @@ Write the complete Python function:"""}
 
         self._created_tools.append(result)
 
-        # Record in meta-cognition
+        # v59.1: Record outcome using OutcomeRecorder (consistent tracking)
         if self._meta_cognition:
             try:
+                from .outcome_recorder import OutcomeRecorder
                 from .meta_cognition_engine import OutcomeRecord
+                latency_ms = (time.time() - start) * 1000
                 self._meta_cognition.record_outcome(OutcomeRecord(
                     component="tool_creator",
                     operation="create_tool",
                     success=result["success"],
                     quality_score=quality,
                     predicted_quality=self._meta_cognition.predict_quality("tool_creator"),
-                    latency_ms=result["latency_ms"],
+                    latency_ms=latency_ms,
+                    metadata={"tool": name, "registered": registered, "quality": quality},
                 ))
             except ImportError:
                 pass

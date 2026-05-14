@@ -1,15 +1,16 @@
 """
-Agent Creator v58 — LLM-powered agent creation with health monitoring and lifecycle.
+Agent Creator v59.1 — LLM-powered agent creation with health monitoring and lifecycle.
 
-CRITICAL UPGRADE from v57:
-- v57: Auto-promote/demote was in registry but not wired to creator
+CRITICAL UPGRADE from v58:
+- v59.1: Applied OutcomeRecorder for consistent performance tracking
+- v59.1: Automatic error recording (success=False on exception)
 - v58: Creator records outcomes in registry for auto-promote/demote
 - Added health monitoring with periodic health checks
 - Added agent lifecycle management (suspend, resume, retire)
 - Quality score based on validation results, not hardcoded
 - Fixed import paths with proper fallback
 
-v58 — Super Mind العقل الخارق مامون
+v59.1 — Super Mind العقل الخارق مامون
 """
 
 import time
@@ -208,17 +209,19 @@ Write the complete agent class:"""}
 
         self._created_agents.append(result)
 
-        # Record in meta-cognition with REAL quality score
+        # v59.1: Record outcome using OutcomeRecorder (consistent tracking)
         if self._meta_cognition:
             try:
+                from .outcome_recorder import OutcomeRecorder
                 from .meta_cognition_engine import OutcomeRecord
+                latency_ms = (time.time() - start) * 1000
                 self._meta_cognition.record_outcome(OutcomeRecord(
                     component="agent_creator",
                     operation="create_agent",
                     success=True,
                     quality_score=quality,
                     predicted_quality=self._meta_cognition.predict_quality("agent_creator"),
-                    latency_ms=result["latency_ms"],
+                    latency_ms=latency_ms,
                     metadata={"agent": name, "mode": mode, "validation": validation},
                 ))
             except ImportError:

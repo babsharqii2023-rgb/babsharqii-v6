@@ -296,7 +296,11 @@ class RLHFBridge:
                     "low": ProposalPriority.MEDIUM,
                 }
 
+                # v59.1 FIX: Generate proper proposal with all required fields
+                import time as _time
                 proposal = ImprovementProposal(
+                    id=f"rlhf_{int(_time.time())}_{id(suggestion) % 10000:04d}",
+                    component=suggestion.component,
                     title=f"RLHF-Driven: Fix {suggestion.component} ({suggestion.pattern.value})",
                     description=suggestion.suggestion,
                     rationale=(
@@ -306,8 +310,13 @@ class RLHFBridge:
                         f"Corrections: {sum(1 for e in suggestion.evidence if e.feedback_type == FeedbackType.CORRECTION)}\n"
                         f"Rejections: {sum(1 for e in suggestion.evidence if e.feedback_type == FeedbackType.REJECTION)}"
                     ),
-                    target_component=suggestion.component,
+                    data_evidence={
+                        "pattern": suggestion.pattern.value,
+                        "confidence": suggestion.confidence,
+                        "evidence_count": len(suggestion.evidence),
+                    },
                     priority=priority_map.get(suggestion.priority, ProposalPriority.MEDIUM),
+                    feature_flag=f"rlhf_fix_{suggestion.component}",
                 )
 
                 # إرسال عبر NeuralBus أيضاً

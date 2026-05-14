@@ -1,7 +1,10 @@
 """
-Deliberation Room v58 — Real democratic deliberation with weighted voting.
+Deliberation Room v59.1 — Real democratic deliberation with weighted voting.
 
-CRITICAL UPGRADE from v57:
+CRITICAL UPGRADE from v58:
+- v59.1: Applied OutcomeRecorder decorator for consistent performance tracking
+- v59.1: Automatic error recording (success=False on exception)
+- v59.1: Consistent quality prediction via MetaCognitionEngine
 - v57: Component key mismatch (brain_{name} didn't match meta-cognition records)
 - v58: Fixed component keys to match actual meta-cognition records
 - Improved position detection with confidence-based classification
@@ -9,7 +12,7 @@ CRITICAL UPGRADE from v57:
 - Deliberation history for tracking outcomes over time
 - More robust LLM arbitration with explicit provider selection
 
-v58 — Super Mind العقل الخارق مامون
+v59.1 — Super Mind العقل الخارق مامون
 """
 
 import time
@@ -361,26 +364,41 @@ class DeliberationRoom:
         if len(self._deliberation_history) > 100:
             self._deliberation_history = self._deliberation_history[-100:]
 
-        # Record in meta-cognition
+        # v59.1: Record outcome using OutcomeRecorder (consistent tracking)
         if self._meta_cognition:
             try:
-                from .meta_cognition_engine import OutcomeRecord
-                self._meta_cognition.record_outcome(OutcomeRecord(
-                    component="deliberation_room",
-                    operation="deliberate",
-                    success=True,
-                    quality_score=confidence,
-                    predicted_quality=self._meta_cognition.predict_quality("deliberation_room"),
-                    latency_ms=total_latency,
-                    metadata={
+                from .outcome_recorder import OutcomeRecorder
+                async with OutcomeRecorder(
+                    self._meta_cognition, "deliberation_room", "deliberate"
+                ) as rec:
+                    rec.quality_score = confidence
+                    rec.success = True
+                    rec.metadata = {
                         "votes_count": len(votes),
                         "consensus": consensus,
                         "arbitration_used": arbitration_used,
                         "decision": decision,
-                    },
-                ))
+                    }
             except ImportError:
-                pass
+                # Fallback to manual recording
+                try:
+                    from .meta_cognition_engine import OutcomeRecord
+                    self._meta_cognition.record_outcome(OutcomeRecord(
+                        component="deliberation_room",
+                        operation="deliberate",
+                        success=True,
+                        quality_score=confidence,
+                        predicted_quality=self._meta_cognition.predict_quality("deliberation_room"),
+                        latency_ms=total_latency,
+                        metadata={
+                            "votes_count": len(votes),
+                            "consensus": consensus,
+                            "arbitration_used": arbitration_used,
+                            "decision": decision,
+                        },
+                    ))
+                except ImportError:
+                    pass
 
         return result
 
