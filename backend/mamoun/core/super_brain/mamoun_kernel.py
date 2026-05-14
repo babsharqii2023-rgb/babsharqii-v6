@@ -243,9 +243,20 @@ class MamounKernel:
 
     # ── Event Handlers ───────────────────────────────────────────────────
     async def _handle_stagnation(self, event) -> None:
-        """Handle stagnation events — trigger improvement."""
-        logger.info(f"Stagnation detected: {event.data}")
-        # This could trigger ImprovementProposer
+        """Handle stagnation events — actually trigger improvement."""
+        logger.warning(f"Stagnation detected: {event.data}")
+        
+        # Trigger ImprovementProposer for the stagnant component
+        component_name = event.data.get("component", "") if hasattr(event, 'data') and event.data else ""
+        if component_name and self._meta_cognition:
+            proposer = self.get_component("improvement_proposer")
+            if proposer:
+                try:
+                    proposals = await proposer.analyze_and_propose()
+                    if proposals:
+                        logger.info(f"Stagnation auto-fix: generated {len(proposals)} proposals for {component_name}")
+                except Exception as e:
+                    logger.error(f"Stagnation auto-fix failed: {e}")
 
     async def _handle_healing(self, event) -> None:
         """Handle healing events."""
@@ -337,17 +348,34 @@ class MamounKernel:
                 self._state = KernelState.ERROR
 
     async def _heartbeat_check(self) -> None:
-        """Check health of all components."""
+        """Check health of all components with REAL health verification."""
         for name, handle in self._components.items():
             handle.last_heartbeat = time.time()
 
-            # Check component health based on meta-cognition data
+            # Check component health based on meta-cognition data (REAL)
             if self._meta_cognition:
                 profile = self._meta_cognition.get_profile(name)
                 if profile and profile.total_operations >= 5:
                     handle.health = profile.reliability_score
                 elif profile and profile.consecutive_failures >= 3:
                     handle.health = 0.3
+                elif profile and profile.total_operations == 0:
+                    # No data yet — unknown health
+                    handle.health = 0.5
+            
+            # Verify component is actually responsive
+            instance = handle.instance
+            if hasattr(instance, 'get_stats'):
+                try:
+                    stats = instance.get_stats()
+                    if isinstance(stats, dict):
+                        # Component is responsive
+                        if handle.health == 0.5 and self._meta_cognition:
+                            # No meta-cognition data but responsive
+                            handle.health = max(handle.health, 0.7)
+                except Exception as e:
+                    logger.warning(f"Component {name} health check failed: {e}")
+                    handle.health = min(handle.health, 0.3)
 
             if self._neural_bus:
                 try:

@@ -171,7 +171,12 @@ class BrainRouter:
         self._meta_cognition = engine
 
     def _get_available_brains(self) -> list[BrainConfig]:
-        """Get brains that have available providers."""
+        """Get brains that have available providers.
+        
+        Only returns brains whose providers are actually configured.
+        If NO providers are available, returns an empty list instead of
+        returning all brains (which would fail on every call).
+        """
         if not self._llm_client:
             return self._brains
 
@@ -184,10 +189,27 @@ class BrainRouter:
             if brain.provider in available_providers:
                 available.append(brain)
             elif brain.provider == "zai":
-                # Z-AI is always available in this environment
-                available.append(brain)
+                # Z-AI is available via ZaiSdkWrapper (Node.js bridge)
+                # It doesn't need an API key in the traditional sense
+                try:
+                    from ..shared.zai_sdk_wrapper import get_zai_wrapper
+                    wrapper = get_zai_wrapper()
+                    if wrapper:
+                        available.append(brain)
+                except ImportError:
+                    try:
+                        from shared.zai_sdk_wrapper import get_zai_wrapper
+                        wrapper = get_zai_wrapper()
+                        if wrapper:
+                            available.append(brain)
+                    except ImportError:
+                        pass
+            elif brain.provider == "critic":
+                # Critic uses DeepSeek API with low temperature
+                if "deepseek" in available_providers:
+                    available.append(brain)
 
-        return available if available else self._brains
+        return available
 
     def _classify_complexity(self, query: str) -> str:
         """Classify query complexity to choose routing strategy."""

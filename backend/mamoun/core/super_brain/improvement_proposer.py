@@ -12,6 +12,7 @@ CRITICAL UPGRADE from v57:
 v58 — Super Mind العقل الخارق مامون
 """
 
+import os
 import time
 import logging
 from typing import Any, Optional
@@ -365,8 +366,14 @@ Approve or reject?"""}
         return proposals
 
     # ── Apply proposals ──────────────────────────────────────────────────
-    async def apply_proposal(self, proposal_id: str) -> dict:
-        """Apply an approved proposal using SelfModifier."""
+    async def apply_proposal(self, proposal_id: str, target_file: str = None) -> dict:
+        """Apply an approved proposal using SelfModifier.
+        
+        Args:
+            proposal_id: The ID of the approved proposal
+            target_file: The actual file path to modify (required if proposal
+                        doesn't have a valid file path)
+        """
         proposal = next((p for p in self._proposals if p.id == proposal_id), None)
         if not proposal:
             return {"success": False, "error": f"Proposal {proposal_id} not found"}
@@ -378,15 +385,50 @@ Approve or reject?"""}
             return {"success": False, "error": "No SelfModifier configured"}
 
         if not proposal.proposed_code:
-            return {"success": False, "error": "No proposed code in this proposal"}
+            # If no code was proposed, use FullSelfRewriter instead
+            rewriter = self._get_rewriter()
+            if rewriter and target_file:
+                try:
+                    result = await rewriter.rewrite_file(
+                        target_file, 
+                        f"Apply improvement: {proposal.description}",
+                        risk_level=proposal.risk_level,
+                    )
+                    if result.status.value == "applied":
+                        proposal.status = ProposalStatus.APPLIED
+                        proposal.applied_at = time.time()
+                        self._feature_flags.enable(proposal.feature_flag)
+                        return {"success": True, "method": "full_self_rewriter"}
+                    else:
+                        proposal.status = ProposalStatus.FAILED
+                        return {"success": False, "error": "Rewriter failed", "method": "full_self_rewriter"}
+                except Exception as e:
+                    proposal.status = ProposalStatus.FAILED
+                    return {"success": False, "error": str(e)}
+            else:
+                return {"success": False, "error": "No proposed code in proposal and no rewriter available"}
 
         proposal.status = ProposalStatus.APPLYING
 
-        from .self_modifier import ModificationProposal, ModificationStatus
+        # Use target_file parameter or try to resolve from component name
+        actual_target = target_file or proposal.component
+        if not actual_target.endswith(".py"):
+            # Component name isn't a file path — try common locations
+            possible_paths = [
+                f"backend/mamoun/core/super_brain/{actual_target}.py",
+                f"backend/mamoun/core/shared/{actual_target}.py",
+                f"{actual_target}.py",
+            ]
+            for path in possible_paths:
+                if os.path.exists(path):
+                    actual_target = path
+                    break
+
+        from .self_modifier import ModificationProposal
         mod = ModificationProposal(
             id=f"mod_{proposal.id}",
-            target_file=proposal.component,  # Would need actual file path
-            original_code="",
+            target_file=actual_target,
+            original_code="",  # SelfModifier will read the file
             proposed_code=proposal.proposed_code,
             description=proposal.description,
             proposer="improvement_proposer",
@@ -403,6 +445,19 @@ Approve or reject?"""}
             proposal.status = ProposalStatus.FAILED
 
         return result
+
+    def _get_rewriter(self):
+        """Get or create a FullSelfRewriter instance."""
+        if not hasattr(self, '_rewriter') or self._rewriter is None:
+            try:
+                from .full_self_rewriter import FullSelfRewriter
+                self._rewriter = FullSelfRewriter(
+                    llm_client=self._llm_client,
+                    meta_cognition=self._meta_cognition,
+                )
+            except Exception:
+                self._rewriter = None
+        return self._rewriter
 
     def get_feature_flags(self) -> dict:
         return self._feature_flags.list_flags()

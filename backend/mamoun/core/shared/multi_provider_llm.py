@@ -334,45 +334,85 @@ class MultiProviderLLMClient:
                 success=False, error=str(e), latency_ms=latency
             )
 
-    # ── Z-AI SDK ─────────────────────────────────────────────────────────
+    # ── Z-AI SDK (via ZaiSdkWrapper subprocess bridge) ──────────────────
     async def _call_zai(self, messages: list[dict], config: ProviderConfig,
                         max_tokens: int = None, temperature: float = None) -> LLMResponse:
-        """Call Z-AI via the web-dev-sdk (bundled with the environment)."""
+        """
+        Call Z-AI via the ZaiSdkWrapper subprocess bridge.
+        
+        The z-ai-web-dev-sdk is a Node.js module — it CANNOT be imported
+        directly from Python. The ZaiSdkWrapper handles the Node.js subprocess
+        communication transparently.
+        """
         start = time.time()
 
         try:
-            import importlib
-            zai_module = importlib.import_module("z-ai-web-dev-sdk")
-            ZAI = zai_module.default if hasattr(zai_module, 'default') else zai_module.ZAI
-            zai = await ZAI.create()
+            from .zai_sdk_wrapper import get_zai_wrapper
+            wrapper = get_zai_wrapper()
 
-            completion = await zai.chat.completions.create(
+            result = await wrapper.chat(
                 messages=messages,
                 max_tokens=max_tokens or config.max_tokens,
                 temperature=temperature if temperature is not None else config.temperature,
             )
 
             latency = (time.time() - start) * 1000
-            content = completion.choices[0].message.content if completion.choices else ""
-            tokens = getattr(completion, 'usage', {}).get('total_tokens', 0) if hasattr(completion, 'usage') else 0
 
-            return LLMResponse(
-                content=content, provider="zai", model="zai-default",
-                tokens_used=tokens, latency_ms=latency, success=True
-            )
+            if result.get("success", False):
+                return LLMResponse(
+                    content=result.get("content", ""),
+                    provider="zai",
+                    model="zai-default",
+                    tokens_used=result.get("usage", {}).get("total_tokens", 0),
+                    latency_ms=latency,
+                    success=True,
+                )
+            else:
+                return LLMResponse(
+                    content="",
+                    provider="zai",
+                    model="zai-default",
+                    success=False,
+                    error=result.get("error", "Z-AI SDK call failed"),
+                    latency_ms=latency,
+                )
 
         except ImportError:
-            latency = (time.time() - start) * 1000
-            return LLMResponse(
-                content="", provider="zai", model="zai-default",
-                success=False, error="z-ai-web-dev-sdk not installed",
-                latency_ms=latency
-            )
+            # Try direct import path
+            try:
+                from zai_sdk_wrapper import get_zai_wrapper
+                wrapper = get_zai_wrapper()
+                result = await wrapper.chat(
+                    messages=messages,
+                    max_tokens=max_tokens or config.max_tokens,
+                    temperature=temperature if temperature is not None else config.temperature,
+                )
+                latency = (time.time() - start) * 1000
+                if result.get("success", False):
+                    return LLMResponse(
+                        content=result.get("content", ""),
+                        provider="zai", model="zai-default",
+                        tokens_used=result.get("usage", {}).get("total_tokens", 0),
+                        latency_ms=latency, success=True,
+                    )
+                else:
+                    return LLMResponse(
+                        content="", provider="zai", model="zai-default",
+                        success=False, error=result.get("error", "Z-AI call failed"),
+                        latency_ms=latency,
+                    )
+            except ImportError:
+                latency = (time.time() - start) * 1000
+                return LLMResponse(
+                    content="", provider="zai", model="zai-default",
+                    success=False, error="ZaiSdkWrapper not available",
+                    latency_ms=latency,
+                )
         except Exception as e:
             latency = (time.time() - start) * 1000
             return LLMResponse(
                 content="", provider="zai", model="zai-default",
-                success=False, error=str(e), latency_ms=latency
+                success=False, error=str(e), latency_ms=latency,
             )
 
     # ── Unified chat interface ───────────────────────────────────────────

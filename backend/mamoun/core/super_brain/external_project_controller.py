@@ -116,7 +116,20 @@ class ExternalProjectController:
             has_tests=has_tests, has_ci=has_ci, file_count=file_count,
         )
 
-        # Record in meta-cognition
+        # Compute real quality score from analysis results
+        quality_score = 0.0
+        if has_git:
+            quality_score += 0.25
+        if has_tests:
+            quality_score += 0.25
+        if has_ci:
+            quality_score += 0.2
+        if file_count > 0:
+            quality_score += 0.15
+        if framework:
+            quality_score += 0.15
+
+        # Record in meta-cognition with REAL quality score
         if self._meta_cognition:
             try:
                 from .meta_cognition_engine import OutcomeRecord
@@ -124,7 +137,7 @@ class ExternalProjectController:
                     component="external_project_controller",
                     operation="analyze_project",
                     success=True,
-                    quality_score=0.9,
+                    quality_score=quality_score,
                     predicted_quality=self._meta_cognition.predict_quality("external_project_controller"),
                     latency_ms=0,
                     metadata={"project": name, "language": language, "file_count": file_count},

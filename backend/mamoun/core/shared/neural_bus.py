@@ -134,21 +134,27 @@ class NeuralBus:
         self._stats["total_delivered"] += delivered
         return delivered
 
-    def publish_sync(self, event: Event) -> None:
-        """Publish an event synchronously (for non-async contexts)."""
+    def publish_sync(self, event: Event) -> int:
+        """Publish an event synchronously (for non-async contexts).
+        Returns the number of handlers notified.
+        """
         self._stats["total_published"] += 1
         self._event_log.append(event)
         if len(self._event_log) > self._max_log_size:
             self._event_log = self._event_log[-self._max_log_size:]
 
         handlers = self._subscribers.get(event.event_type, [])
+        delivered = 0
         for handler in handlers:
             try:
                 if not asyncio.iscoroutinefunction(handler):
                     handler(event)
+                    delivered += 1
             except Exception as e:
                 self._stats["total_errors"] += 1
                 logger.error(f"Error in sync handler: {e}")
+        self._stats["total_delivered"] += delivered
+        return delivered
 
     def get_recent_events(self, event_type: str = None, limit: int = 100) -> list[Event]:
         """Get recent events, optionally filtered by type."""

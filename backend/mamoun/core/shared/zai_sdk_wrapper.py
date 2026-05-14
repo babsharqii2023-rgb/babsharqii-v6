@@ -140,24 +140,38 @@ class ZaiSdkWrapper:
         return helper_path
 
     async def _call_node(self, args: dict) -> dict:
-        """Call the Node.js helper script with the given arguments."""
+        """
+        Call the Node.js helper script with the given arguments.
+        Uses asyncio subprocess to avoid blocking the event loop.
+        """
         self._call_count += 1
         helper_path = self._get_helper_path()
 
         try:
-            result = subprocess.run(
-                ["node", helper_path, json.dumps(args)],
-                capture_output=True,
-                text=True,
-                timeout=self._timeout,
+            import asyncio as _asyncio
+
+            proc = await _asyncio.create_subprocess_exec(
+                "node", helper_path, json.dumps(args),
+                stdout=_asyncio.subprocess.PIPE,
+                stderr=_asyncio.subprocess.PIPE,
                 cwd=os.path.dirname(helper_path),
             )
 
-            # Parse the output
-            output = result.stdout.strip()
+            try:
+                stdout, stderr = await _asyncio.wait_for(
+                    proc.communicate(), timeout=self._timeout
+                )
+            except _asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                self._error_count += 1
+                return {"success": False, "error": f"Node.js helper timed out after {self._timeout}s"}
+
+            output = stdout.decode("utf-8", errors="replace").strip()
+            err_output = stderr.decode("utf-8", errors="replace").strip()
+
             if not output:
-                # Try stderr for error info
-                error_msg = result.stderr.strip() if result.stderr else "Empty response"
+                error_msg = err_output if err_output else "Empty response"
                 self._error_count += 1
                 return {"success": False, "error": f"Node.js helper returned empty output: {error_msg}"}
 
@@ -170,9 +184,6 @@ class ZaiSdkWrapper:
                 self._error_count += 1
                 return {"success": False, "error": f"JSON decode error: {e}, output: {output[:200]}"}
 
-        except subprocess.TimeoutExpired:
-            self._error_count += 1
-            return {"success": False, "error": f"Node.js helper timed out after {self._timeout}s"}
         except FileNotFoundError:
             self._error_count += 1
             return {"success": False, "error": "Node.js not found — cannot use z-ai SDK"}
