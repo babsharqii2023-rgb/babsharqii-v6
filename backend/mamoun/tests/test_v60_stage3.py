@@ -496,19 +496,19 @@ class TestHealthDashboardUnit:
 class TestKernelUnit:
     """Unit tests for MamounKernel."""
 
-    def test_kernel_version_v60(self):
-        """Kernel should report v60."""
+    def test_kernel_version_v61(self):
+        """Kernel should report v61."""
         from mamoun.core.super_brain.mamoun_kernel import MamounKernel
         kernel = MamounKernel()
         status = kernel.get_status()
-        assert status["version"] == "v60"
+        assert status["version"] == "v61"
 
     def test_kernel_self_assessment_version(self):
-        """Self-assessment should report v60."""
+        """Self-assessment should report v61."""
         from mamoun.core.super_brain.mamoun_kernel import MamounKernel
         kernel = MamounKernel()
         assessment = kernel.get_self_assessment()
-        assert assessment["version"] == "v60"
+        assert assessment["version"] == "v61"
 
     def test_kernel_states(self):
         """KernelState should have all required states."""

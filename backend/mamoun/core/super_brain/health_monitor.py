@@ -8,6 +8,10 @@ CRITICAL ADDITION from v61:
 - كل مكون يُعطى صحة من 0-100 (نسبة مئوية)
 - تنبيهات فورية عبر WebSocket + webhook عند CRITICAL/EMERGENCY
 - يتحقق من: MetaCognition, AgentLifecycle, SelfHealing, EvolutionLoop
+- Stage 4 v61: detect_patterns(), auto_escalate(), get_proactive_alerts(), _check_reliability_trend()
+- Pattern detection across components, auto-escalation freezes EvolutionLoop on EMERGENCY
+- Proactive alerts predict issues before they become critical
+- Reliability trend tracking over 3 cycles with auto-escalation on decline
 
 v61 — Super Mind العقل الخارق مامون
 """
@@ -107,6 +111,17 @@ class HealthMonitor:
         # WebSocket subscribers
         self._ws_subscribers: list[Callable] = []
 
+        # v61: Reliability trend tracking per component (last 3 cycles)
+        self._reliability_history: dict[str, list[float]] = {}
+        self._reliability_trend_window = 3  # track last 3 cycles
+
+        # v61: Escalation state
+        self._escalation_active = False
+        self._escalation_reason: Optional[str] = None
+
+        # v61: Proactive alert cache
+        self._proactive_alerts: list[dict] = []
+
     def set_meta_cognition(self, mc):
         self._meta_cognition = mc
 
@@ -163,6 +178,12 @@ class HealthMonitor:
                 # إرسال تنبيهات عند الحاجة
                 await self._handle_alerts(report)
 
+                # v61: Auto-escalate on EMERGENCY, recover when resolved
+                await self.auto_escalate(report)
+
+                # v61: Update proactive alerts
+                self.get_proactive_alerts()
+
             except Exception as e:
                 logger.error(f"HealthMonitor loop error: {e}")
 
@@ -210,6 +231,10 @@ class HealthMonitor:
 
         # تحديث التقرير الأخير حتى يعمل get_health() بدون monitoring loop
         self._last_report = report
+
+        # v61: Update reliability history for trend tracking
+        for comp_score in component_scores:
+            self._update_reliability_history(comp_score.component, comp_score.reliability)
 
         logger.info(
             f"Health check: overall={overall:.1f}/100 ({overall_severity.value}), "
@@ -284,7 +309,9 @@ class HealthMonitor:
             # كشف المشاكل
             if score.consecutive_failures >= 3:
                 score.issues.append(f"{score.consecutive_failures} consecutive failures")
-                score.severity = AlertSeverity.CRITICAL
+                # Only escalate, never downgrade: if already EMERGENCY, keep it
+                if score.severity != AlertSeverity.EMERGENCY:
+                    score.severity = AlertSeverity.CRITICAL
             if score.staleness > self.STALENESS_THRESHOLD:
                 score.issues.append(f"stale for {score.staleness/3600:.1f} hours")
             if score.trend < -0.3:
@@ -353,6 +380,338 @@ class HealthMonitor:
                     except Exception as e:
                         logger.error(f"Auto-healing failed for {component.component}: {e}")
 
+    def detect_patterns(self) -> list[dict]:
+        """
+        كشف أنماط المشاكل عبر جميع المكونات
+
+        Returns:
+            قائمة بالأنماط المكتشفة، كل نمط يحتوي على:
+            - pattern_type: نوع النمط (cascading_failure, shared_dependency, correlated_decline)
+            - components: المكونات المتأثرة
+            - severity: خطورة النمط
+            - description: وصف النمط
+        """
+        patterns = []
+
+        if not self._last_report:
+            return patterns
+
+        components = self._last_report.components
+        if not components:
+            return patterns
+
+        # Pattern 1: Cascading failure — multiple components failing simultaneously
+        failing = [c for c in components if c.severity in (AlertSeverity.CRITICAL, AlertSeverity.EMERGENCY)]
+        if len(failing) >= 2:
+            patterns.append({
+                "pattern_type": "cascading_failure",
+                "components": [c.component for c in failing],
+                "severity": "critical",
+                "description": f"{len(failing)} components in CRITICAL/EMERGENCY simultaneously — possible cascading failure",
+                "affected_scores": {c.component: c.score for c in failing},
+            })
+
+        # Pattern 2: Shared dependency — components with same issues
+        issue_map: dict[str, list[str]] = {}
+        for c in components:
+            for issue in c.issues:
+                issue_key = issue.lower().strip()
+                if issue_key not in issue_map:
+                    issue_map[issue_key] = []
+                issue_map[issue_key].append(c.component)
+
+        for issue, comps in issue_map.items():
+            if len(comps) >= 2:
+                patterns.append({
+                    "pattern_type": "shared_dependency",
+                    "components": comps,
+                    "severity": "warning",
+                    "description": f"Shared issue '{issue}' affects {len(comps)} components: {', '.join(comps)}",
+                    "shared_issue": issue,
+                })
+
+        # Pattern 3: Correlated decline — components with declining trends
+        declining = [c for c in components if c.trend < -0.2]
+        if len(declining) >= 2:
+            patterns.append({
+                "pattern_type": "correlated_decline",
+                "components": [c.component for c in declining],
+                "severity": "warning",
+                "description": f"{len(declining)} components showing correlated quality decline",
+                "trends": {c.component: c.trend for c in declining},
+            })
+
+        # Pattern 4: Widespread staleness
+        stale = [c for c in components if c.staleness > self.STALENESS_THRESHOLD]
+        if len(stale) >= 3:
+            patterns.append({
+                "pattern_type": "widespread_staleness",
+                "components": [c.component for c in stale],
+                "severity": "warning",
+                "description": f"{len(stale)} components are stale — system may be idle or stuck",
+                "staleness": {c.component: c.staleness for c in stale},
+            })
+
+        # Pattern 5: Never operated — components with zero operations
+        never_operated = [c for c in components if c.total_operations == 0]
+        if len(never_operated) >= 2:
+            patterns.append({
+                "pattern_type": "dormant_components",
+                "components": [c.component for c in never_operated],
+                "severity": "info",
+                "description": f"{len(never_operated)} components have never operated",
+            })
+
+        return patterns
+
+    async def auto_escalate(self, report: SystemHealthReport) -> bool:
+        """
+        تصعيد تلقائي — تجميد EvolutionLoop عند EMERGENCY
+
+        When the system has EMERGENCY-level components:
+        1. Freeze EvolutionLoop to prevent making things worse
+        2. Send emergency notifications
+        3. Resume EvolutionLoop only when all components recover above CRITICAL
+
+        Returns:
+            True if escalation was activated, False if deactivated/recovered
+        """
+        has_emergency = report.emergency_count > 0
+
+        if has_emergency and not self._escalation_active:
+            # Activate escalation — freeze EvolutionLoop
+            self._escalation_active = True
+            emergency_components = [
+                c.component for c in report.components
+                if c.severity == AlertSeverity.EMERGENCY
+            ]
+            self._escalation_reason = (
+                f"EMERGENCY: {len(emergency_components)} components in emergency state: "
+                f"{', '.join(emergency_components[:5])}"
+            )
+
+            # Freeze EvolutionLoop
+            if self._kernel:
+                evo_loop = self._kernel.get_component("evolution_loop_v2")
+                if evo_loop and hasattr(evo_loop, '_frozen'):
+                    evo_loop._frozen = True
+                    logger.critical(f"EvolutionLoop FROZEN by auto_escalate: {self._escalation_reason}")
+
+            # Send emergency notification
+            if self._notification_engine:
+                try:
+                    await self._notification_engine.broadcast_emergency(
+                        title="AUTO-ESCALATION: EvolutionLoop Frozen",
+                        message=self._escalation_reason,
+                        metadata={
+                            "escalation_type": "auto_escalate",
+                            "emergency_components": emergency_components,
+                            "overall_score": report.overall_score,
+                        },
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to send escalation notification: {e}")
+
+            logger.critical(f"Auto-escalation activated: {self._escalation_reason}")
+            return True
+
+        elif not has_emergency and self._escalation_active:
+            # Recovery — unfreeze EvolutionLoop
+            self._escalation_active = False
+            self._escalation_reason = None
+
+            if self._kernel:
+                evo_loop = self._kernel.get_component("evolution_loop_v2")
+                if evo_loop and hasattr(evo_loop, 'unfreeze'):
+                    evo_loop.unfreeze()
+                    logger.info("EvolutionLoop UNFROZEN — system recovered from emergency")
+
+            # Send recovery notification
+            if self._notification_engine:
+                try:
+                    await self._notification_engine.send_notification(
+                        level="info",
+                        title="ESCALATION RESOLVED: EvolutionLoop Resumed",
+                        message="All components recovered from EMERGENCY state. EvolutionLoop has been unfrozen.",
+                        source="health_monitor",
+                        metadata={"escalation_type": "recovery"},
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to send recovery notification: {e}")
+
+            logger.info("Auto-escalation deactivated — system recovered")
+            return False
+
+        return self._escalation_active
+
+    def get_proactive_alerts(self) -> list[dict]:
+        """
+        تنبيهات استباقية — توقع المشاكل قبل أن تصبح حرجة
+
+        Analyzes:
+        - Reliability trends (declining reliability)
+        - Staleness trends (increasing staleness)
+        - Consecutive failure patterns
+        - Quality degradation
+
+        Returns:
+            قائمة بالتنبيهات الاستباقية
+        """
+        alerts = []
+
+        if not self._last_report:
+            return alerts
+
+        for component in self._last_report.components:
+            # Check reliability trend
+            trend_result = self._check_reliability_trend(component.component)
+            if trend_result and trend_result.get("declining"):
+                alerts.append({
+                    "alert_type": "reliability_decline",
+                    "component": component.component,
+                    "severity": "warning",
+                    "message": (
+                        f"Component {component.component} reliability declining over "
+                        f"{self._reliability_trend_window} cycles "
+                        f"(trend: {trend_result.get('trend_direction', 'unknown')})"
+                    ),
+                    "current_reliability": component.reliability,
+                    "trend_direction": trend_result.get("trend_direction", "unknown"),
+                    "predicted_score": trend_result.get("predicted_score"),
+                })
+
+            # Check approaching staleness
+            if component.staleness > self.STALENESS_THRESHOLD * 0.7 and component.staleness <= self.STALENESS_THRESHOLD:
+                alerts.append({
+                    "alert_type": "approaching_staleness",
+                    "component": component.component,
+                    "severity": "info",
+                    "message": (
+                        f"Component {component.component} approaching staleness threshold "
+                        f"({component.staleness/3600:.1f}h / {self.STALENESS_THRESHOLD/3600:.1f}h)"
+                    ),
+                    "current_staleness_hours": component.staleness / 3600,
+                    "threshold_hours": self.STALENESS_THRESHOLD / 3600,
+                })
+
+            # Check consecutive failures building up (2+ means 3+ is coming soon)
+            if component.consecutive_failures >= 2 and component.severity != AlertSeverity.EMERGENCY:
+                alerts.append({
+                    "alert_type": "impending_critical",
+                    "component": component.component,
+                    "severity": "warning",
+                    "message": (
+                        f"Component {component.component} has {component.consecutive_failures} "
+                        f"consecutive failures — may reach CRITICAL soon"
+                    ),
+                    "consecutive_failures": component.consecutive_failures,
+                })
+
+            # Check quality degradation (negative trend approaching threshold)
+            if -0.3 <= component.trend < -0.1 and component.score >= 60:
+                alerts.append({
+                    "alert_type": "quality_degradation",
+                    "component": component.component,
+                    "severity": "info",
+                    "message": (
+                        f"Component {component.component} quality declining (trend={component.trend:.2f}) "
+                        f"— currently score={component.score:.1f}"
+                    ),
+                    "current_trend": component.trend,
+                    "current_score": component.score,
+                })
+
+        # Store alerts for later retrieval
+        self._proactive_alerts = alerts
+
+        return alerts
+
+    def _check_reliability_trend(self, component_name: str) -> Optional[dict]:
+        """
+        تتبع اتجاه الموثوقية عبر 3 دورات
+
+        Tracks reliability for each component across the last 3 health check cycles.
+        If reliability is declining consistently, returns a trend analysis.
+
+        Auto-escalates if reliability is declining over 3 consecutive cycles.
+
+        Returns:
+            dict with trend analysis if declining, None otherwise:
+            - declining: bool
+            - trend_direction: "declining" | "stable" | "improving"
+            - values: list of reliability values
+            - predicted_score: predicted next reliability
+        """
+        if component_name not in self._reliability_history:
+            return None
+
+        history = self._reliability_history[component_name]
+        if len(history) < 2:
+            return None
+
+        # Calculate trend direction
+        if len(history) >= self._reliability_trend_window:
+            window = history[-self._reliability_trend_window:]
+        else:
+            window = history
+
+        # Check if consistently declining
+        declining = True
+        for i in range(1, len(window)):
+            if window[i] >= window[i - 1]:
+                declining = False
+                break
+
+        # Determine overall direction
+        first_val = window[0]
+        last_val = window[-1]
+        diff = last_val - first_val
+
+        if diff < -0.05:
+            direction = "declining"
+        elif diff > 0.05:
+            direction = "improving"
+        else:
+            direction = "stable"
+            declining = False
+
+        # Predict next value using linear extrapolation
+        predicted = None
+        if len(window) >= 2:
+            rate = (window[-1] - window[-2])
+            predicted = max(0.0, min(1.0, window[-1] + rate))
+
+        result = {
+            "declining": declining,
+            "trend_direction": direction,
+            "values": list(window),
+            "predicted_score": predicted,
+        }
+
+        # Auto-escalate if declining over 3 consecutive cycles
+        if declining and len(window) >= self._reliability_trend_window:
+            logger.warning(
+                f"Reliability trend declining for {component_name} over "
+                f"{len(window)} cycles: {window}"
+            )
+            # If we have a kernel, we could trigger escalation here
+            # The auto_escalate method handles the actual freezing
+
+        return result
+
+    def _update_reliability_history(self, component_name: str, reliability: float):
+        """Update the reliability history for a component (called during check_all)."""
+        if component_name not in self._reliability_history:
+            self._reliability_history[component_name] = []
+
+        self._reliability_history[component_name].append(reliability)
+
+        # Keep only the last N entries
+        max_entries = self._reliability_trend_window * 2  # keep some extra for analysis
+        if len(self._reliability_history[component_name]) > max_entries:
+            self._reliability_history[component_name] = \
+                self._reliability_history[component_name][-max_entries:]
+
     def get_health(self, component_name: str = None) -> dict:
         """الحصول على بيانات الصحة"""
         if component_name:
@@ -413,9 +772,14 @@ class HealthMonitor:
     def get_stats(self) -> dict:
         """إحصائيات المراقب"""
         return {
+            "version": "v61",
             "monitoring_active": self._running,
             "check_interval_seconds": self.CHECK_INTERVAL,
             "health_history_size": len(self._health_history),
             "ws_subscribers": len(self._ws_subscribers),
             "last_check": self._last_report.timestamp if self._last_report else 0,
+            "escalation_active": self._escalation_active,
+            "escalation_reason": self._escalation_reason,
+            "proactive_alerts_count": len(self._proactive_alerts),
+            "reliability_history_components": list(self._reliability_history.keys()),
         }

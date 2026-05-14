@@ -1,21 +1,25 @@
 """
-Mamoun Kernel v60 — Consciousness loop with full self-improvement pipeline.
+Mamoun Kernel v61 — Consciousness loop with full self-improvement pipeline.
 
-CRITICAL UPGRADE from v59.1:
+CRITICAL UPGRADE from v60:
+- v61: _handle_emergency() — emergency handler freezes EvolutionLoop
+- v61: _check_proactive_health() — proactive health checks in self-assessment cycle
+- v61: HealthMonitor proactive alerts wired to NotificationEngine
+- v61: Emergency escalation with auto-recovery
+
+Previous upgrades preserved:
 - v60: VariantArchive integrated into kernel (DGM-inspired)
 - v60: NotificationEngine wired to NeuralBus events
 - v60: HealthDashboard shows real-time system health
 - v60: HealthMonitor v61 provides comprehensive monitoring
 - v60: FullSelfRewriter ↔ ImprovementProposer wiring confirmed
 - v60: 21+ components registered and wired
-
-Previous upgrades preserved:
 - v59.1: SelfHealingBridge connects SelfHealing ↔ MetaCognition
 - v59.1: RLHFBridge connects ExperientialRLHF ↔ ImprovementProposer
 - v59.1: OutcomeRecorder decorator applied to all components
 - v59: Proposer↔SelfModifier wiring confirmed, EvolutionLoopV2 added
 
-v60 — Super Mind العقل الخارق مامون
+v61 — Super Mind العقل الخارق مامون
 """
 
 import os
@@ -97,7 +101,7 @@ class MamounKernel:
 
     async def initialize(self) -> None:
         """Initialize all components with proper wiring."""
-        logger.info("Initializing Mamoun Kernel v60...")
+        logger.info("Initializing Mamoun Kernel v61...")
 
         # 1. Neural Bus
         try:
@@ -327,7 +331,7 @@ class MamounKernel:
 
         self._state = KernelState.RUNNING
         self._start_time = time.time()
-        logger.info(f"Mamoun Kernel v60 initialized with {len(self._components)} components")
+        logger.info(f"Mamoun Kernel v61 initialized with {len(self._components)} components")
 
     def _register_component(self, name: str, instance: Any) -> None:
         self._components[name] = ComponentHandle(
@@ -451,7 +455,7 @@ class MamounKernel:
             logger.error(f"Cannot run kernel in state: {self._state}")
             return
 
-        logger.info("Mamoun Kernel v60 main loop started")
+        logger.info("Mamoun Kernel v61 main loop started")
 
         while self._state == KernelState.RUNNING:
             try:
@@ -477,6 +481,9 @@ class MamounKernel:
                     if self._meta_cognition:
                         self._meta_cognition.save()
                     self._last_meta_save = now
+
+                # v61: Proactive health check
+                await self._check_proactive_health()
 
                 await asyncio.sleep(self.MAIN_LOOP_INTERVAL)
 
@@ -573,7 +580,7 @@ class MamounKernel:
             llm_health = self._llm_client.get_health_report()
 
         return {
-            "version": "v60",
+            "version": "v61",
             "state": self._state.value,
             "uptime_seconds": uptime,
             "loop_count": self._loop_count,
@@ -593,7 +600,7 @@ class MamounKernel:
     def get_self_assessment(self) -> dict:
         """Get honest self-assessment."""
         assessment = {
-            "version": "v60",
+            "version": "v61",
             "kernel_state": self._state.value,
             "components_available": list(self._components.keys()),
         }
@@ -609,4 +616,99 @@ class MamounKernel:
         assessment["self_improvement_enabled"] = True
         assessment["persistence_enabled"] = True
 
+        # v61: Include health monitor data in self-assessment
+        health_monitor = self.get_component("health_monitor")
+        if health_monitor:
+            assessment["health_monitoring"] = health_monitor.get_health()
+            assessment["proactive_alerts"] = health_monitor.get_proactive_alerts()
+            assessment["detected_patterns"] = health_monitor.detect_patterns()
+            assessment["escalation_active"] = health_monitor._escalation_active
+
         return assessment
+
+    # ── v61: Emergency Handler ────────────────────────────────────────────
+    async def _handle_emergency(self, component_name: str, reason: str) -> None:
+        """
+        معالجة حالة الطوارئ — تجميد EvolutionLoop وإرسال تنبيهات
+
+        When a component reaches EMERGENCY state:
+        1. Freeze EvolutionLoop to prevent making things worse
+        2. Broadcast emergency via NotificationEngine
+        3. Attempt auto-healing via SelfHealingBridge
+        4. Log the emergency for audit trail
+        """
+        logger.critical(f"EMERGENCY HANDLER: {component_name} — {reason}")
+
+        # 1. Freeze EvolutionLoop
+        evolution_loop = self.get_component("evolution_loop_v2")
+        if evolution_loop and hasattr(evolution_loop, '_frozen'):
+            evolution_loop._frozen = True
+            logger.critical("EvolutionLoop FROZEN by emergency handler")
+
+        # 2. Broadcast emergency
+        notification_engine = self.get_component("notification_engine")
+        if notification_engine:
+            try:
+                await notification_engine.broadcast_emergency(
+                    title=f"EMERGENCY: {component_name}",
+                    message=f"Component {component_name} in EMERGENCY. Reason: {reason}",
+                    metadata={"component": component_name, "reason": reason},
+                )
+            except Exception as e:
+                logger.error(f"Emergency broadcast failed: {e}")
+
+        # 3. Attempt auto-healing
+        healing_bridge = self.get_component("self_healing_bridge")
+        if healing_bridge:
+            try:
+                result = await healing_bridge.heal_component(
+                    component_name=component_name,
+                    issue_description=f"EMERGENCY: {reason}",
+                    severity="critical",
+                )
+                logger.info(f"Emergency healing result for {component_name}: {result.status.value}")
+            except Exception as e:
+                logger.error(f"Emergency healing failed for {component_name}: {e}")
+
+    # ── v61: Proactive Health Check ──────────────────────────────────────
+    async def _check_proactive_health(self) -> None:
+        """
+        فحص صحي استباقي — استخدام بيانات HealthMonitor للتنبؤ بالمشاكل
+
+        Runs on every main loop iteration to:
+        1. Check HealthMonitor for proactive alerts
+        2. Trigger improvement proposals for declining components
+        3. Auto-escalate if reliability drops below threshold
+        """
+        health_monitor = self.get_component("health_monitor")
+        if not health_monitor:
+            return
+
+        # Get proactive alerts
+        alerts = health_monitor.get_proactive_alerts()
+        for alert in alerts:
+            if alert.get("severity") == "warning" and alert.get("alert_type") == "reliability_decline":
+                component = alert.get("component", "")
+                # Trigger improvement proposal for declining component
+                proposer = self.get_component("improvement_proposer")
+                if proposer and component:
+                    try:
+                        proposals = await proposer.analyze_and_propose()
+                        if proposals:
+                            logger.info(f"Proactive improvement: {len(proposals)} proposals for {component}")
+                    except Exception as e:
+                        logger.debug(f"Proactive improvement failed for {component}: {e}")
+
+        # Check escalation state
+        if health_monitor._escalation_active:
+            # If escalation is active, skip self-improvement
+            return
+
+        # Auto-escalate if reliability drops below 0.5
+        if health_monitor._last_report:
+            for comp in health_monitor._last_report.components:
+                if comp.reliability < 0.5 and comp.severity.value in ("critical", "emergency"):
+                    await self._handle_emergency(
+                        comp.component,
+                        f"Reliability {comp.reliability:.2f} below threshold (0.5)"
+                    )

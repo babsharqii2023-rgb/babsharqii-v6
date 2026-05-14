@@ -353,18 +353,18 @@ class TestVersionConsistency:
     """Test that all v59.1 components report correct version."""
 
     def test_kernel_version(self):
-        """MamounKernel should report v60."""
+        """MamounKernel should report v61."""
         from mamoun.core.super_brain.mamoun_kernel import MamounKernel
         kernel = MamounKernel()
         status = kernel.get_status()
-        assert status["version"] == "v60", f"Expected v60, got {status['version']}"
+        assert status["version"] == "v61", f"Expected v61, got {status['version']}"
 
     def test_kernel_self_assessment_version(self):
-        """Kernel self-assessment should report v60."""
+        """Kernel self-assessment should report v61."""
         from mamoun.core.super_brain.mamoun_kernel import MamounKernel
         kernel = MamounKernel()
         assessment = kernel.get_self_assessment()
-        assert assessment["version"] == "v60", f"Expected v60, got {assessment['version']}"
+        assert assessment["version"] == "v61", f"Expected v61, got {assessment['version']}"
 
 
 # ─── Test MetaCognitionEngine ──────────────────────────────────────────────

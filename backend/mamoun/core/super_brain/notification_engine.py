@@ -1,7 +1,13 @@
 """
-NotificationEngine v59.2 — محرك التنبيهات عبر NeuralBus
+NotificationEngine v61 — محرك التنبيهات عبر NeuralBus
 
-CRITICAL FIX from v59:
+CRITICAL ADDITION from v61 Stage 4:
+- _ws_push(notification): WebSocket push for real-time client updates
+- get_api_notifications(): Structured data for API endpoints
+- broadcast_emergency(title, message, metadata): Send to ALL channels at once
+- Proactive alert integration with HealthMonitor
+
+Previous upgrades preserved:
 - v59: لا توجد تنبيهات تلقائية عند الأحداث الحرجة
 - v59.2: NotificationEngine يراقب NeuralBus ويرسل تنبيهات تلقائية
 - يدعم: WEBHOOK, IN_APP, EMAIL, TELEGRAM, DISCORD
@@ -10,7 +16,7 @@ CRITICAL FIX from v59:
 
 Inspired by: NVIDIA OpenShell (Continuous Monitoring)
 
-v59.2 — Super Mind العقل الخارق مامون
+v61 — Super Mind العقل الخارق مامون
 """
 
 import asyncio
@@ -40,6 +46,7 @@ class NotificationChannel(str, Enum):
     TELEGRAM = "telegram"
     DISCORD = "discord"
     LOG = "log"
+    WEBSOCKET = "websocket"  # v61: WebSocket push channel
 
 
 @dataclass
@@ -95,6 +102,12 @@ class NotificationEngine:
 
         # الاشتراكات
         self._subscribers: dict[str, list[Callable]] = {}
+
+        # v61: WebSocket subscribers for real-time push
+        self._ws_subscribers: list[Callable] = []
+
+        # v61: Emergency broadcast log
+        self._emergency_broadcasts: list[dict] = []
 
     def set_neural_bus(self, neural_bus):
         self._neural_bus = neural_bus
@@ -335,6 +348,225 @@ class NotificationEngine:
                 return True
         return False
 
+    # ── v61: WebSocket Push ──────────────────────────────────────────────
+
+    def subscribe_ws(self, callback: Callable):
+        """الاشتراك في تحديثات WebSocket الفورية"""
+        self._ws_subscribers.append(callback)
+
+    async def _ws_push(self, notification: Notification) -> None:
+        """
+        إرسال تنبيه عبر WebSocket لجميع المشتركين
+
+        Pushes notification data to all WebSocket subscribers in real-time.
+        Used for live dashboard updates and emergency alerts.
+
+        Args:
+            notification: The notification to push
+        """
+        data = {
+            "type": "notification",
+            "id": notification.id,
+            "level": notification.level.value,
+            "title": notification.title,
+            "message": notification.message,
+            "source": notification.source,
+            "channel": notification.channel.value,
+            "timestamp": notification.timestamp,
+            "metadata": notification.metadata,
+        }
+
+        for callback in self._ws_subscribers:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(data)
+                else:
+                    callback(data)
+            except Exception as e:
+                logger.debug(f"WS push subscriber failed: {e}")
+
+    # ── v61: API Endpoint Data ───────────────────────────────────────────
+
+    def get_api_notifications(self, level: NotificationLevel = None, limit: int = 50, offset: int = 0) -> dict:
+        """
+        الحصول على بيانات التنبيهات بتنسيق API endpoint
+
+        Returns structured notification data suitable for REST API responses,
+        with pagination support and optional level filtering.
+
+        Args:
+            level: Optional level filter
+            limit: Maximum number of notifications to return (default 50)
+            offset: Pagination offset (default 0)
+
+        Returns:
+            dict with:
+            - notifications: list of notification dicts
+            - total: total count of matching notifications
+            - unread_count: count of unread matching notifications
+            - limit: the limit used
+            - offset: the offset used
+            - version: "v61"
+        """
+        notifications = self._notifications
+        if level:
+            notifications = [n for n in notifications if n.level == level]
+
+        total = len(notifications)
+        unread_count = sum(1 for n in notifications if not n.acknowledged)
+
+        # Apply pagination
+        paginated = notifications[offset:offset + limit]
+
+        return {
+            "version": "v61",
+            "notifications": [
+                {
+                    "id": n.id,
+                    "level": n.level.value,
+                    "title": n.title,
+                    "message": n.message,
+                    "source": n.source,
+                    "channel": n.channel.value,
+                    "timestamp": n.timestamp,
+                    "acknowledged": n.acknowledged,
+                    "metadata": n.metadata,
+                }
+                for n in reversed(paginated)
+            ],
+            "total": total,
+            "unread_count": unread_count,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    # ── v61: Emergency Broadcast ─────────────────────────────────────────
+
+    async def broadcast_emergency(self, title: str, message: str, metadata: dict = None) -> dict:
+        """
+        بث طوارئ — إرسال عبر جميع القنوات في وقت واحد
+
+        Sends an emergency notification to ALL available channels simultaneously:
+        - IN_APP (always)
+        - WEBHOOK (if configured)
+        - LOG (always)
+        - WEBSOCKET (to all WS subscribers)
+        - Subscribers at all levels
+
+        This bypasses rate limiting for emergency broadcasts.
+
+        Args:
+            title: Emergency title
+            message: Emergency message
+            metadata: Optional additional metadata
+
+        Returns:
+            dict with broadcast results per channel
+        """
+        results = {}
+
+        # Create the emergency notification
+        self._notification_counter += 1
+        notification = Notification(
+            id=f"emergency_{int(time.time())}_{self._notification_counter}",
+            level=NotificationLevel.EMERGENCY,
+            title=title,
+            message=message,
+            source="emergency_broadcast",
+            channel=NotificationChannel.IN_APP,
+            timestamp=time.time(),
+            metadata=metadata or {},
+        )
+
+        # 1. IN_APP — add to list
+        self._notifications.append(notification)
+        if len(self._notifications) > self.MAX_IN_APP_NOTIFICATIONS:
+            self._notifications = self._notifications[-100:]
+        results["in_app"] = True
+
+        # 2. LOG — always log
+        self._log_notification(notification)
+        results["log"] = True
+
+        # 3. WEBHOOK — send if configured
+        if self._webhook_url:
+            try:
+                await self._send_webhook(notification)
+                results["webhook"] = True
+            except Exception as e:
+                results["webhook"] = False
+                results["webhook_error"] = str(e)
+        else:
+            results["webhook"] = False
+            results["webhook_reason"] = "not_configured"
+
+        # 4. WEBSOCKET — push to all subscribers
+        try:
+            await self._ws_push(notification)
+            results["websocket"] = True
+            results["ws_subscribers_notified"] = len(self._ws_subscribers)
+        except Exception as e:
+            results["websocket"] = False
+            results["websocket_error"] = str(e)
+
+        # 5. Notify all level subscribers
+        notified_subscribers = 0
+        for level_key in self._subscribers:
+            for callback in self._subscribers[level_key]:
+                try:
+                    if asyncio.iscoroutinefunction(callback):
+                        await callback(notification)
+                    else:
+                        callback(notification)
+                    notified_subscribers += 1
+                except Exception as e:
+                    logger.warning(f"Emergency broadcast subscriber failed: {e}")
+        results["subscribers_notified"] = notified_subscribers
+
+        # 6. NeuralBus — publish emergency event
+        if self._neural_bus:
+            try:
+                from ..shared.neural_bus import Event, EventType
+            except ImportError:
+                try:
+                    from shared.neural_bus import Event, EventType
+                except ImportError:
+                    EventType = None
+
+            if EventType and hasattr(EventType, 'HEALTH_CRITICAL'):
+                try:
+                    await self._neural_bus.publish(Event(
+                        event_type=EventType.HEALTH_CRITICAL,
+                        source="notification_engine",
+                        data={
+                            "title": title,
+                            "message": message,
+                            "metadata": metadata or {},
+                            "broadcast": True,
+                        },
+                    ))
+                    results["neural_bus"] = True
+                except Exception as e:
+                    results["neural_bus"] = False
+                    results["neural_bus_error"] = str(e)
+
+        # Record emergency broadcast
+        broadcast_record = {
+            "id": notification.id,
+            "title": title,
+            "message": message,
+            "timestamp": notification.timestamp,
+            "results": results,
+            "metadata": metadata or {},
+        }
+        self._emergency_broadcasts.append(broadcast_record)
+        if len(self._emergency_broadcasts) > 50:
+            self._emergency_broadcasts = self._emergency_broadcasts[-25:]
+
+        logger.critical(f"EMERGENCY BROADCAST: {title} — {message}")
+
+        return results
+
     def get_unread(self, level: NotificationLevel = None) -> list[dict]:
         """الحصول على التنبيهات غير المقروءة"""
         notifications = [
@@ -366,12 +598,15 @@ class NotificationEngine:
             by_level[n.level.value] = by_level.get(n.level.value, 0) + 1
 
         return {
+            "version": "v61",
             "total_notifications": total,
             "unread": unread,
             "by_level": by_level,
             "subscribers": {
                 k: len(v) for k, v in self._subscribers.items()
             },
+            "ws_subscribers": len(self._ws_subscribers),
             "webhook_configured": bool(self._webhook_url),
             "rate_limit_remaining": self.RATE_LIMIT_PER_MINUTE - len(self._sent_timestamps),
+            "emergency_broadcasts_count": len(self._emergency_broadcasts),
         }
