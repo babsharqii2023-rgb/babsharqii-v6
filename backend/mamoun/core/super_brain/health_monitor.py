@@ -208,6 +208,9 @@ class HealthMonitor:
             warning_count=warning_count,
         )
 
+        # تحديث التقرير الأخير حتى يعمل get_health() بدون monitoring loop
+        self._last_report = report
+
         logger.info(
             f"Health check: overall={overall:.1f}/100 ({overall_severity.value}), "
             f"emergency={emergency_count}, critical={critical_count}, warning={warning_count}"
@@ -368,6 +371,7 @@ class HealthMonitor:
 
         if self._last_report:
             return {
+                "version": "v61",
                 "overall_score": self._last_report.overall_score,
                 "overall_severity": self._last_report.overall_severity.value,
                 "emergency_count": self._last_report.emergency_count,
@@ -385,7 +389,26 @@ class HealthMonitor:
                 ],
             }
 
-        return {"status": "no_data", "version": "v61"}
+        # لا تقرير بعد — أعد بيانات افتراضية
+        report = self.check_all()
+        return {
+            "version": "v61",
+            "overall_score": report.overall_score,
+            "overall_severity": report.overall_severity.value,
+            "emergency_count": report.emergency_count,
+            "critical_count": report.critical_count,
+            "warning_count": report.warning_count,
+            "timestamp": report.timestamp,
+            "components": [
+                {
+                    "name": c.component,
+                    "score": c.score,
+                    "severity": c.severity.value,
+                    "issues": c.issues,
+                }
+                for c in report.components
+            ],
+        }
 
     def get_stats(self) -> dict:
         """إحصائيات المراقب"""

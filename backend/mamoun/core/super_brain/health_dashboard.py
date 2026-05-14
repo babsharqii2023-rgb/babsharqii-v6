@@ -103,11 +103,13 @@ class HealthDashboard:
         component_cards = []
         component_names = []
 
-        # جمع أسماء المكونات من الكيرنل
-        if self._kernel and hasattr(self._kernel, '_components'):
+        # جمع أسماء المكونات من MetaCognition أو القائمة الافتراضية
+        if self._meta_cognition and hasattr(self._meta_cognition, '_profiles') and self._meta_cognition._profiles:
+            component_names = list(self._meta_cognition._profiles.keys())
+        elif self._kernel and hasattr(self._kernel, '_components'):
             component_names = list(self._kernel._components.keys())
-        elif self._kernel and hasattr(self._kernel, 'get_component'):
-            # محاولة بديلة
+        else:
+            # قائمة المكونات الافتراضية — 19 مكون أساسي
             component_names = [
                 "meta_cognition", "llm_client", "web_search", "brain_router",
                 "deliberation_room", "deep_research", "self_modifier",

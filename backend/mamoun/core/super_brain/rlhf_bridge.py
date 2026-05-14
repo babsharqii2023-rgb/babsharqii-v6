@@ -317,6 +317,7 @@ class RLHFBridge:
                     },
                     priority=priority_map.get(suggestion.priority, ProposalPriority.MEDIUM),
                     feature_flag=f"rlhf_fix_{suggestion.component}",
+                    proposer="rlhf_bridge",
                 )
 
                 # إرسال عبر NeuralBus أيضاً
