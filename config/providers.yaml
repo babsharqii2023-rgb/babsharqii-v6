@@ -1,0 +1,93 @@
+# Super Mind v57 - Multi-Provider Configuration
+# Each brain uses a DIFFERENT provider for TRUE diversity
+
+providers:
+  glm:
+    name: "GLM (ZhipuAI)"
+    base_url: "https://open.bigmodel.cn/api/paas/v4"
+    model: "glm-4-plus"
+    api_key_env: "GLM_API_KEY"
+    max_tokens: 4096
+    temperature: 0.7
+    personality: "synthesizer"
+    system_prompt: |
+      أنت المُركّب — مهمتك تجميع الآراء المختلفة وإيجاد نقاط الاتفاق والخلاف.
+      فكر بشكل منهجي، رتب الحجج حسب القوة، وقدم خلاصة متوازنة.
+
+  gemini:
+    name: "Google Gemini"
+    base_url: "https://generativelanguage.googleapis.com/v1beta"
+    model: "gemini-2.0-flash"
+    api_key_env: "GEMINI_API_KEY"
+    max_tokens: 4096
+    temperature: 0.9
+    personality: "creative"
+    system_prompt: |
+      أنت المبدع — فكر خارج الصندوق، ابحث عن حلول غير تقليدية.
+      لا تتقيد بالأساليب المعتادة، اقترح أفكاراً جريئة ومبتكرة.
+
+  deepseek:
+    name: "DeepSeek"
+    base_url: "https://api.deepseek.com/v1"
+    model: "deepseek-chat"
+    api_key_env: "DEEPSEEK_API_KEY"
+    max_tokens: 4096
+    temperature: 0.2
+    personality: "analyst"
+    system_prompt: |
+      أنت المحلل — ركز على الأدلة والبيانات والمنطق الصارم.
+      حلل كل ادعاء بعناية، ابحث عن الثغرات المنطقية، وقدم تحليلاً دقيقاً.
+
+  zai:
+    name: "Z-AI (Default)"
+    model: "default"
+    api_key_env: "ZAI_API_KEY"
+    max_tokens: 4096
+    temperature: 0.5
+    personality: "pragmatist"
+    system_prompt: |
+      أنت العملي — ركز على التكلفة والجدوى والتطبيق.
+      قيّم كل اقتراح من منظور عملي: هل يمكن تنفيذه؟ ما التكلفة؟ ما المخاطر؟
+
+  critic:
+    name: "Critic (DeepSeek Low-Temp)"
+    base_url: "https://api.deepseek.com/v1"
+    model: "deepseek-chat"
+    api_key_env: "DEEPSEEK_API_KEY"
+    max_tokens: 4096
+    temperature: 0.0
+    personality: "critic"
+    system_prompt: |
+      أنت الناقد — مهمتك إيجاد الثغرات والأخطاء والمخاطر.
+      كن صارماً، لا تقبل شيئاً بدون دليل، واقترح أسوأ سيناريو محتمل.
+
+routing:
+  default_provider: "deepseek"
+  fallback_chain: ["deepseek", "gemini", "glm", "zai"]
+  complexity_routing:
+    simple: "deepseek"
+    moderate: "gemini"
+    complex: "glm"
+    critical: "critic"
+
+sandbox:
+  enabled: true
+  timeout_seconds: 30
+  max_memory_mb: 256
+  forbidden_imports: ["os.system", "subprocess", "eval", "exec", "__import__", "shutil.rmtree"]
+  forbidden_builtins: ["compile", "breakpoint", "exit", "quit"]
+
+metacognition:
+  history_window: 100
+  stagnation_threshold: 50
+  min_samples_before_assessment: 5
+  calibration_decay: 0.95
+  auto_record: true
+
+research:
+  depth_levels:
+    quick: { max_sources: 5, max_depth: 1, timeout: 30 }
+    standard: { max_sources: 10, max_depth: 2, timeout: 60 }
+    deep: { max_sources: 20, max_depth: 3, timeout: 120 }
+  verify_sources: true
+  cross_reference: true
