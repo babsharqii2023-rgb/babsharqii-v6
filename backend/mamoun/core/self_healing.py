@@ -55,6 +55,29 @@ class HealingActionType(str, Enum):
     NOTIFY_HUMAN = "notify_human"
 
 
+# Backward-compatible HealthIssue class (used by auto_research_heal_loop.py)
+class HealthIssue:
+    """Represents a health issue detected in the system."""
+    def __init__(self, component: str = "", severity: str = "medium",
+                 description: str = "", root_cause: str = ""):
+        self.component = component
+        self.severity = severity
+        self.description = description
+        self.root_cause = root_cause
+        self.timestamp = time.time()
+        self.id = f"issue_{int(self.timestamp)}_{hash(component) % 10000:04d}"
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "component": self.component,
+            "severity": self.severity,
+            "description": self.description,
+            "root_cause": self.root_cause,
+            "timestamp": self.timestamp,
+        }
+
+
 class SelfHealingEngine:
     """
     Backward-compatible SelfHealingEngine that delegates to SelfHealingBridge.
@@ -62,7 +85,8 @@ class SelfHealingEngine:
     v62: FULL API compatibility with all v23.py endpoints.
     """
 
-    def __init__(self, llm_client=None, meta_cognition=None, neural_bus=None):
+    def __init__(self, llm_client=None, meta_cognition=None, neural_bus=None,
+                 db_path: str = None):
         self._bridge = SelfHealingBridge(
             meta_cognition=meta_cognition,
             neural_bus=neural_bus,
@@ -77,6 +101,16 @@ class SelfHealingEngine:
             "issues_count": 0,
         }
         self._llm_client = llm_client
+        self._neural_bus = neural_bus
+        self.db_path = db_path
+        # Backward-compatible repair strategies (used by auto_research_heal_loop.py)
+        self._repair_strategies = {
+            "restart_service": self._repair_restart,
+            "clear_cache": self._repair_clear_cache,
+            "reset_state": self._repair_reset_state,
+            "fallback_to_safe": self._repair_fallback,
+        }
+        self._initialized = False
 
     def diagnose(self, component: str, error: str = "") -> list[HealingAction]:
         """Diagnose an issue — delegates to SelfHealingBridge."""
@@ -466,6 +500,46 @@ class SelfHealingEngine:
             logger.warning(f"Auto-fix attempt failed: {e}")
         
         return {"success": False, "error": "Auto-fix failed"}
+
+    # ── v62: Methods required by auto_research_heal_loop.py ──────────────
+
+    def initialize(self):
+        """Initialize the self-healing engine (backward-compatible)."""
+        self._initialized = True
+        logger.info("SelfHealingEngine initialized")
+
+    def _auto_repair(self, issue: HealthIssue) -> bool:
+        """
+        محاولة إصلاح تلقائي — called by auto_research_heal_loop.py.
+        Attempts to repair a health issue using registered strategies.
+        """
+        strategy = issue.root_cause if issue.root_cause in self._repair_strategies else "restart_service"
+        repair_fn = self._repair_strategies.get(strategy, self._repair_restart)
+        try:
+            return repair_fn(issue)
+        except Exception as e:
+            logger.error(f"Auto-repair failed for {issue.component}: {e}")
+            return False
+
+    def _repair_restart(self, issue: HealthIssue) -> bool:
+        """Repair by restarting the component (placeholder)."""
+        logger.info(f"Repair: restarting {issue.component}")
+        return True
+
+    def _repair_clear_cache(self, issue: HealthIssue) -> bool:
+        """Repair by clearing cache (placeholder)."""
+        logger.info(f"Repair: clearing cache for {issue.component}")
+        return True
+
+    def _repair_reset_state(self, issue: HealthIssue) -> bool:
+        """Repair by resetting component state (placeholder)."""
+        logger.info(f"Repair: resetting state for {issue.component}")
+        return True
+
+    def _repair_fallback(self, issue: HealthIssue) -> bool:
+        """Repair by falling back to safe mode (placeholder)."""
+        logger.info(f"Repair: falling back to safe mode for {issue.component}")
+        return True
 
 
 # ── Module-level singleton ──────────────────────────────────────────────

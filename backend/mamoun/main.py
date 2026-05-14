@@ -381,8 +381,24 @@ async def lifespan(app: FastAPI):
         import traceback; traceback.print_exc()
         print(f"[Mamoun] Living Systems endpoints will return 503")
 
-    # ═══ v61: Initialize SuperBrain components — العقل الخارق مامون ═══
+    # ═══ v62: Initialize SuperBrain components — العقل الخارق مامون ═══
     try:
+        # Import super_brain components explicitly for kernel registration
+        from mamoun.core.super_brain import (
+            MetaCognitionEngine,
+            SelfHealingBridge,
+            RLHFBridge,
+            OutcomeRecorder,
+            record_outcome,
+            VariantArchive,
+            NotificationEngine,
+            HealthMonitor,
+            HealthDashboard,
+            ImprovementProposer,
+            EvolutionLoopV2,
+        )
+
+        # Initialize super_brain via the integration bridge
         from mamoun.core.super_brain.integration_bridge import initialize_super_brain
         sb_results = await initialize_super_brain(
             kernel=kernel,
@@ -391,9 +407,75 @@ async def lifespan(app: FastAPI):
         )
         sb_successes = sum(1 for v in sb_results.values() if "initialized" in str(v))
         sb_total = len(sb_results)
-        print(f"[Mamoun] SuperBrain v61: {sb_successes}/{sb_total} components initialized ✓")
+        print(f"[Mamoun] SuperBrain v62: {sb_successes}/{sb_total} components initialized ✓")
         for name, status in sb_results.items():
             print(f"[Mamoun]   {name}: {status}")
+
+        # Register super_brain components on the kernel for API access
+        try:
+            from mamoun.core.super_brain.integration_bridge import get_component
+
+            # MetaCognition — self-awareness engine
+            meta_cog = get_component("meta_cognition")
+            if meta_cog:
+                kernel._meta_cognition = meta_cog
+                print(f"[Mamoun]   MetaCognitionEngine → registered on kernel ✓")
+
+            # OutcomeRecorder — automatic outcome tracking
+            recorder = get_component("outcome_recorder")
+            if recorder:
+                kernel._outcome_recorder = recorder
+                print(f"[Mamoun]   OutcomeRecorder → registered on kernel ✓")
+
+            # RLHFBridge — feedback-driven improvement
+            rlhf = get_component("rlhf_bridge")
+            if rlhf:
+                kernel._rlhf_bridge = rlhf
+                print(f"[Mamoun]   RLHFBridge → registered on kernel ✓")
+
+            # VariantArchive — code variant management
+            archive = get_component("variant_archive")
+            if archive:
+                kernel._variant_archive = archive
+                print(f"[Mamoun]   VariantArchive → registered on kernel ✓")
+
+            # NotificationEngine — alert system
+            notif = get_component("notification_engine")
+            if notif:
+                kernel._notification_engine = notif
+                print(f"[Mamoun]   NotificationEngine → registered on kernel ✓")
+
+            # ImprovementProposer — data-driven improvement proposals
+            improver = get_component("improvement_proposer")
+            if improver:
+                kernel._improvement_proposer = improver
+                print(f"[Mamoun]   ImprovementProposer → registered on kernel ✓")
+
+            # HealthMonitor — health monitoring
+            health_mon = get_component("health_monitor")
+            if health_mon:
+                kernel._health_monitor = health_mon
+                # Initialize health monitoring background task
+                try:
+                    await health_mon.start_monitoring()
+                    print(f"[Mamoun]   HealthMonitor → registered & monitoring started ✓")
+                except Exception as he:
+                    print(f"[Mamoun]   HealthMonitor → registered (monitoring start failed: {he})")
+
+            # HealthDashboard — health visualization
+            health_dash = get_component("health_dashboard")
+            if health_dash:
+                kernel._health_dashboard = health_dash
+                print(f"[Mamoun]   HealthDashboard → registered on kernel ✓")
+
+            # EvolutionLoopV2 — coordinated self-improvement
+            evo_loop = get_component("evolution_loop_v2")
+            if evo_loop:
+                kernel._evolution_loop_v2 = evo_loop
+                print(f"[Mamoun]   EvolutionLoopV2 → registered on kernel ✓")
+
+        except Exception as reg_err:
+            print(f"[Mamoun] ⚠ SuperBrain component registration partially failed: {reg_err}")
 
         # Store reference in app state for API access
         app.state.super_brain_initialized = True
@@ -467,6 +549,11 @@ async def lifespan(app: FastAPI):
         if health_monitor and hasattr(health_monitor, 'stop_monitoring'):
             await health_monitor.stop_monitoring()
             print("[Mamoun] HealthMonitor stopped ✓")
+        # Stop notification engine if running
+        notif_engine = get_component("notification_engine")
+        if notif_engine and hasattr(notif_engine, 'stop'):
+            await notif_engine.stop()
+            print("[Mamoun] NotificationEngine stopped ✓")
     except Exception as e:
         print(f"[Mamoun] ⚠ SuperBrain shutdown error: {e}")
 
@@ -490,9 +577,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="BABSHARQII v50.0 — Mamoun",
-    description="Living AGI System — 5 Brains / 3 Providers / Gemini Proxy / TRUE DIVERSITY + Real CodeGen + ProjectScaffolder + ExternalController + CapabilityAssessor",
-    version="50.0.0",
+    title="BABSHARQII v62.0 — Mamoun",
+    description="Living AGI System — 5 Brains / 3 Providers / Gemini Proxy / TRUE DIVERSITY + SuperBrain v62 + Real CodeGen + ProjectScaffolder + ExternalController + CapabilityAssessor",
+    version="62.0.0",
     lifespan=lifespan,
 )
 

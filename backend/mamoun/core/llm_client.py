@@ -302,3 +302,24 @@ def get_llm_client(config_override: dict = None) -> LLMClient:
     if _llm_client_instance is None:
         _llm_client_instance = LLMClient(config_override=config_override)
     return _llm_client_instance
+
+
+def reload_llm_client_keys():
+    """Reload API keys from environment (backward-compatible — called by api_keys.py, security.py)."""
+    global _llm_client_instance
+    if _llm_client_instance is not None:
+        _llm_client_instance.reload_keys()
+    else:
+        # Create a new instance to pick up new keys
+        _llm_client_instance = LLMClient()
+    logger.info("LLM client keys reloaded (via reload_llm_client_keys)")
+
+
+async def close():
+    """Close LLM client connections (backward-compatible)."""
+    global _llm_client_instance
+    if _llm_client_instance is not None:
+        try:
+            await _llm_client_instance.close()
+        except Exception:
+            pass

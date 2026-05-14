@@ -2,6 +2,7 @@
 // ContextScreen — شاشة السياق الديناميكية
 // Dynamically renders screen components based on detected intent
 // Uses AnimatePresence for smooth transitions
+// Updated: Supports UIDirective rendering via DefaultScreen
 // ═══════════════════════════════════════════════════════════════════
 
 'use client';
@@ -9,6 +10,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { loadScreenComponent, getScreenDefinition } from '@/lib/screen-registry';
+import { generateUIDirective, type UIDirective } from '@/lib/ui-directive';
+import DefaultScreen from '@/components/brain/DefaultScreen';
 import type { ComponentType } from 'react';
 
 // ─── Animation Variants ────────────────────────────────────────
@@ -131,6 +134,10 @@ export interface ContextScreenProps {
   animation?: string;
   screenProps?: Record<string, unknown>;
   onBack?: () => void;
+  /** UIDirective for generative rendering — takes priority over activeScreen */
+  directive?: UIDirective | null;
+  /** Callback when an action button is triggered in a UIDirective */
+  onAction?: (action: { intent: string; payload?: Record<string, unknown> }) => void;
 }
 
 export default function ContextScreen({
@@ -138,17 +145,24 @@ export default function ContextScreen({
   animation = 'fadeIn',
   screenProps = {},
   onBack,
+  directive,
+  onAction,
 }: ContextScreenProps) {
   const [ScreenComponent, setScreenComponent] = useState<ComponentType<Record<string, unknown>> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load screen component dynamically — uses async IIFE to avoid
-  // synchronous setState-in-effect lint violation
+  // Load screen component dynamically
   useEffect(() => {
     let cancelled = false;
 
     const loadAsync = async () => {
+      // If we have a UIDirective and the screen is DefaultScreen or not set, use DefaultScreen
+      if (directive && (!activeScreen || activeScreen === 'DefaultScreen')) {
+        setScreenComponent(() => DefaultScreen as unknown as ComponentType<Record<string, unknown>>);
+        return;
+      }
+
       if (!activeScreen) {
         setScreenComponent(null);
         return;
@@ -160,7 +174,12 @@ export default function ContextScreen({
       try {
         const comp = await loadScreenComponent(activeScreen);
         if (!cancelled) {
-          setScreenComponent(() => comp);
+          if (comp) {
+            setScreenComponent(() => comp);
+          } else {
+            // Component not found — use DefaultScreen with auto-generated directive
+            setScreenComponent(() => DefaultScreen as unknown as ComponentType<Record<string, unknown>>);
+          }
           setLoading(false);
         }
       } catch (err) {
@@ -174,7 +193,7 @@ export default function ContextScreen({
     loadAsync();
 
     return () => { cancelled = true; };
-  }, [activeScreen]);
+  }, [activeScreen, directive]);
 
   const handleBack = useCallback(() => {
     onBack?.();
@@ -182,6 +201,24 @@ export default function ContextScreen({
 
   const variant = animationVariants[animation] || animationVariants.fadeIn;
   const screenDef = activeScreen ? getScreenDefinition(activeScreen) : null;
+
+  // Build props for the screen component
+  const computedProps: Record<string, unknown> = {
+    ...screenProps,
+    onBack: handleBack,
+    // If we have a directive, pass it to DefaultScreen
+    ...(directive ? { directive, onAction } : {}),
+  };
+
+  // If we don't have a directive but have an intent, auto-generate one
+  if (!directive && screenProps?.intent && ScreenComponent === DefaultScreen) {
+    const autoDirective = generateUIDirective(
+      String(screenProps.intent),
+      (screenProps.responseData as Record<string, unknown>) || screenProps
+    );
+    computedProps.directive = autoDirective;
+    computedProps.onAction = onAction;
+  }
 
   return (
     <div style={{
@@ -191,7 +228,7 @@ export default function ContextScreen({
       position: 'relative',
     }}>
       {/* Header bar when a screen is active */}
-      {activeScreen && screenDef && (
+      {(activeScreen || directive) && screenDef && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -229,7 +266,7 @@ export default function ContextScreen({
       )}
 
       <AnimatePresence mode="wait">
-        {!activeScreen ? (
+        {!activeScreen && !directive ? (
           <motion.div
             key="welcome"
             {...animationVariants.fadeIn}
@@ -265,12 +302,12 @@ export default function ContextScreen({
           </motion.div>
         ) : ScreenComponent ? (
           <motion.div
-            key={activeScreen}
+            key={activeScreen || 'directive'}
             {...variant}
             transition={{ duration: 0.35, ease: 'easeOut' }}
-            style={{ height: 'calc(100% - 40px)' }}
+            style={{ height: activeScreen && screenDef ? 'calc(100% - 40px)' : '100%' }}
           >
-            <ScreenComponent {...screenProps} onBack={handleBack} />
+            <ScreenComponent {...computedProps} />
           </motion.div>
         ) : null}
       </AnimatePresence>

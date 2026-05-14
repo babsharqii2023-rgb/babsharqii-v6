@@ -2,6 +2,7 @@
 // ScreenRegistry — سجل الشاشات الديناميكية
 // Maps intent names to React component references
 // Components are loaded dynamically to reduce initial bundle
+// Updated with DefaultScreen for Generative UI system
 // ═══════════════════════════════════════════════════════════════════
 
 import type { ComponentType } from 'react';
@@ -80,6 +81,14 @@ export const SCREEN_REGISTRY: Record<string, ScreenDefinition> = {
     icon: '🚀',
     description: 'لوحة النشر والتحكم بالإصدارات',
   },
+  DefaultScreen: {
+    id: 'DefaultScreen',
+    component: 'DefaultScreen',
+    labelAr: 'شاشة عامة',
+    labelEn: 'Default Screen',
+    icon: '📋',
+    description: 'شاشة عامة تعرض توجيهات واجهة المستخدم',
+  },
 };
 
 /**
@@ -126,6 +135,10 @@ export async function loadScreenComponent(screenId: string): Promise<ComponentTy
       }
       case 'DeployPanel': {
         const mod = await import('@/components/brain/DeployPanel');
+        return mod.default;
+      }
+      case 'DefaultScreen': {
+        const mod = await import('@/components/brain/DefaultScreen');
         return mod.default;
       }
       default:

@@ -73,7 +73,7 @@ export default function DeployPanel({ onBack }: DeployPanelProps) {
       const buildData = buildRes.ok ? await buildRes.json() : null;
       setSteps(prev => prev.map((s, i) => i === 1 ? { 
         ...s, 
-        status: buildRes.ok ? 'done' : 'warning',
+        status: buildRes.ok ? 'done' : 'failed',
         detail: buildData?.success ? 'تم البناء' : 'بناء جزئي' 
       } : s));
     } catch {

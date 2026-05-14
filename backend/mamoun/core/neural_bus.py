@@ -1,11 +1,17 @@
 """
-BABSHARQII v61 — NeuralBus (BACKWARD-COMPATIBLE ADAPTER)
+BABSHARQII v62 — NeuralBus (BACKWARD-COMPATIBLE ADAPTER)
 
 This file now serves as a compatibility layer that redirects to
 the new shared/neural_bus.py while preserving the old publish() API.
 
 Migration: core/neural_bus.py → core/shared/neural_bus.py
 Status: ADAPTER — all calls forwarded to shared NeuralBus
+
+v62 FIX: Added ALL missing exports called by v23.py, project_orchestrator.py, dashboard_bridge.py:
+- SignalPriority enum, NeuralBus class alias
+- get_status(), get_recent_signals(), get_signal_flow(), get_subscriptions()
+- _initialized flag, get_instance() classmethod
+- subscribe() with list-of-signals support (main.py compatibility)
 """
 
 import warnings
@@ -14,7 +20,7 @@ import json
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, Any, Callable
+from typing import Optional, Any, Callable, Union
 from enum import Enum
 
 logger = logging.getLogger("mamoun.core.neural_bus")
@@ -47,6 +53,15 @@ class SignalType(str, Enum):
     HEALING_CHECK = "healing_check"
 
 
+class SignalPriority(int, Enum):
+    """Signal priority levels (backward-compatible with v23.py, project_orchestrator.py)."""
+    CRITICAL = 0
+    HIGH = 1
+    NORMAL = 5
+    LOW = 8
+    BACKGROUND = 10
+
+
 @dataclass
 class NeuralSignal:
     """A signal on the NeuralBus (backward-compatible)."""
@@ -55,10 +70,13 @@ class NeuralSignal:
     payload: dict = field(default_factory=dict)
     timestamp: float = 0.0
     priority: int = 5
+    id: str = ""
 
     def __post_init__(self):
         if not self.timestamp:
             self.timestamp = time.time()
+        if not self.id:
+            self.id = f"sig_{int(self.timestamp * 1000)}_{hash(self.signal_type) % 10000:04d}"
 
 
 class NeuralBusCompat:
@@ -69,6 +87,8 @@ class NeuralBusCompat:
     New API: neural_bus.publish(Event(event_type, source, data))
     
     This adapter translates between the two.
+    
+    v62: Added full API compatibility with v23.py endpoints and main.py.
     """
 
     def __init__(self):
@@ -76,6 +96,7 @@ class NeuralBusCompat:
         self._subscribers: dict[str, list[Callable]] = {}
         self._signal_history: list[NeuralSignal] = []
         self._max_history = 1000
+        self._initialized = True  # v62: flag checked by v23.py
         logger.info("NeuralBusCompat initialized — delegating to shared NeuralBus")
 
     def publish(
@@ -83,12 +104,16 @@ class NeuralBusCompat:
         signal_type: str,
         source: str = "",
         payload: dict = None,
-        priority: int = 5,
+        priority: Union[int, SignalPriority] = 5,
     ) -> NeuralSignal:
         """
         Publish a signal (old API compatibility).
         Translates to new Event and publishes on shared NeuralBus.
         """
+        # Convert SignalPriority to int if needed
+        if isinstance(priority, SignalPriority):
+            priority = priority.value
+
         signal = NeuralSignal(
             signal_type=signal_type,
             source=source,
@@ -132,16 +157,61 @@ class NeuralBusCompat:
 
         return signal
 
-    def subscribe(self, signal_type: str, callback: Callable) -> None:
-        """Subscribe to a signal type (old API compatibility)."""
-        if signal_type not in self._subscribers:
-            self._subscribers[signal_type] = []
-        self._subscribers[signal_type].append(callback)
+    def subscribe(
+        self,
+        subscriber_id_or_signal_type: str,
+        signal_types_or_callback: Union[list[str], str, Callable] = None,
+        callback: Callable = None,
+        handler: Callable = None,
+        priority_filter: int = None,
+    ) -> None:
+        """
+        Subscribe to signal types (backward-compatible with BOTH old and main.py APIs).
+        
+        Old API: subscribe(signal_type, callback)
+        Main.py API: subscribe(subscriber_id, signal_types_list, handler=fn, priority_filter=N)
+        """
+        # Detect main.py-style call: subscribe("name", ["sig1", "sig2"], handler=fn)
+        if isinstance(signal_types_or_callback, list) and (handler or callback):
+            # Main.py style: subscriber_id, list of signal types, handler
+            actual_handler = handler or callback
+            for sig_type in signal_types_or_callback:
+                if sig_type not in self._subscribers:
+                    self._subscribers[sig_type] = []
+                self._subscribers[sig_type].append(actual_handler)
+                # Also subscribe on new bus
+                try:
+                    event_type = self._map_signal_to_event(sig_type)
+                    self._new_bus.subscribe(event_type.value, actual_handler)
+                except Exception:
+                    pass
+            return
+
+        # Old API: subscribe(signal_type, callback)
+        if isinstance(signal_types_or_callback, (str, Callable)):
+            if callable(signal_types_or_callback):
+                # subscribe(signal_type, callback) where signal_type is first arg
+                sig_type = subscriber_id_or_signal_type
+                cb = signal_types_or_callback
+            else:
+                # subscribe(subscriber_id, signal_type_string)
+                sig_type = signal_types_or_callback
+                cb = callback or handler
+        else:
+            sig_type = subscriber_id_or_signal_type
+            cb = callback or handler
+
+        if not cb:
+            return
+
+        if sig_type not in self._subscribers:
+            self._subscribers[sig_type] = []
+        self._subscribers[sig_type].append(cb)
 
         # Also subscribe on new bus
         try:
-            event_type = self._map_signal_to_event(signal_type)
-            self._new_bus.subscribe(event_type.value, callback)
+            event_type = self._map_signal_to_event(sig_type)
+            self._new_bus.subscribe(event_type.value, cb)
         except Exception:
             pass
 
@@ -175,6 +245,63 @@ class NeuralBusCompat:
             "new_bus_stats": new_stats,
         }
 
+    # ── v62: Methods required by v23.py API endpoints ────────────────────
+
+    def get_status(self) -> dict:
+        """حالة الناقل العصبي — called by /v23/neural-bus/status."""
+        return {
+            "initialized": self._initialized,
+            "total_signals": len(self._signal_history),
+            "subscribers": sum(len(cbs) for cbs in self._subscribers.values()),
+            "signal_types": list(self._subscribers.keys()),
+            "stats": self.get_stats(),
+        }
+
+    def get_recent_signals(self, limit: int = 20) -> list[dict]:
+        """آخر الإشارات العصبية — called by /v23/neural-bus/signals."""
+        recent = self._signal_history[-limit:]
+        return [
+            {
+                "id": s.id,
+                "type": s.signal_type,
+                "source": s.source,
+                "priority": s.priority,
+                "timestamp": s.timestamp,
+                "payload_preview": str(s.payload)[:200] if s.payload else "",
+            }
+            for s in recent
+        ]
+
+    def get_signal_flow(self) -> dict:
+        """تدفق الإشارات بين المحركات — called by /v23/neural-bus/flow."""
+        flow = {}
+        for signal in self._signal_history[-100:]:
+            source = signal.source.split(":")[0] if signal.source else "unknown"
+            target_types = signal.signal_type
+            if source not in flow:
+                flow[source] = {}
+            flow[source][target_types] = flow[source].get(target_types, 0) + 1
+        return {"flow": flow, "total_sources": len(flow)}
+
+    def get_subscriptions(self) -> dict:
+        """كل الاشتراكات العصبية — called by /v23/neural-bus/subscriptions."""
+        subs = {}
+        for sig_type, callbacks in self._subscribers.items():
+            subs[sig_type] = len(callbacks)
+        return subs
+
+    def persist_stats(self):
+        """Persist NeuralBus stats (called during shutdown)."""
+        try:
+            self._new_bus.persist_stats()
+        except Exception:
+            pass
+
+    @classmethod
+    def get_instance(cls):
+        """Get the singleton instance (called by dashboard_bridge.py)."""
+        return _get_neural_bus_module()
+
     def _map_signal_to_event(self, signal_type: str):
         """Map old signal type string to new EventType."""
         mapping = {
@@ -191,8 +318,26 @@ class NeuralBusCompat:
             "meta_stagnation": _NewEventType.META_STAGNATION,
             "health_critical": _NewEventType.HEALTH_CRITICAL,
             "healing_check": _NewEventType.HEALING_CHECK,
+            "emotion_shift": _NewEventType.SYSTEM,
+            "energy_drop": _NewEventType.SYSTEM,
+            "stress_spike": _NewEventType.SYSTEM,
+            "vital_change": _NewEventType.SYSTEM,
+            "bond_strengthened": _NewEventType.SYSTEM,
+            "bond_weakened": _NewEventType.SYSTEM,
+            "user_absent": _NewEventType.SYSTEM,
+            "user_returned": _NewEventType.SYSTEM,
+            "action_completed": _NewEventType.SYSTEM,
+            "action_failed": _NewEventType.SYSTEM,
+            "error_detected": _NewEventType.SYSTEM,
+            "memory_stored": _NewEventType.SYSTEM,
+            "prediction_failed": _NewEventType.SYSTEM,
+            "pattern_detected": _NewEventType.SYSTEM,
         }
         return mapping.get(signal_type, _NewEventType.SYSTEM)
+
+
+# ── Backward-compatible NeuralBus class alias ────────────────────────────
+NeuralBus = NeuralBusCompat
 
 
 # ── Singleton ───────────────────────────────────────────────────────────
@@ -220,3 +365,5 @@ def __getattr__(name):
     if name == "neural_bus":
         return _get_neural_bus_module()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+logger.info("neural_bus → redirected to shared/neural_bus (v62 full adapter)")
