@@ -1,33 +1,36 @@
 """
 BABSHARQII v61 — SelfHealing (BACKWARD-COMPATIBLE ADAPTER)
 
-Merges old SelfHealingEngine with new SelfHealingBridge.
-The new SelfHealingBridge connects to MetaCognition + NeuralBus,
-while preserving the old 14+ healing patterns.
+Redirects to super_brain/self_healing_bridge.py.
+Old: core/self_healing.py → New: core/super_brain/self_healing_bridge.py
+
+The old SelfHealingEngine implementation (with pattern-based diagnosis)
+has been moved to core/legacy/self_healing.py.
+All functionality now delegates to the canonical super_brain SelfHealingBridge.
 
 Migration: core/self_healing.py → core/super_brain/self_healing_bridge.py
-Status: ENHANCED ADAPTER
+Status: ADAPTER — all calls forwarded to super_brain SelfHealingBridge
 """
 
-import time
 import logging
-from dataclasses import dataclass, field
 from typing import Optional
 from enum import Enum
 
 logger = logging.getLogger("mamoun.core.self_healing")
 
-# Import new bridge
-try:
-    from mamoun.core.super_brain.self_healing_bridge import SelfHealingBridge as _NewBridge
-    _NEW_AVAILABLE = True
-except ImportError:
-    _NEW_AVAILABLE = False
+# Re-export everything from the new module
+from mamoun.core.super_brain.self_healing_bridge import (
+    HealingAction,
+    HealingResultStatus,
+    HealingResult,
+    SelfHealingBridge,
+)
 
 
-# ── Backward-compatible types ───────────────────────────────────────────
-
+# Backward-compatible HealingActionType enum
+# Maps old action type names to the new HealingAction enum values
 class HealingActionType(str, Enum):
+    """Backward-compatible healing action types."""
     RESTART_COMPONENT = "restart_component"
     CLEAR_CACHE = "clear_cache"
     RESET_STATE = "reset_state"
@@ -44,134 +47,49 @@ class HealingActionType(str, Enum):
     NOTIFY_HUMAN = "notify_human"
 
 
-@dataclass
-class HealingAction:
-    """A healing action to be taken."""
-    action_type: HealingActionType
-    target: str = ""
-    description: str = ""
-    priority: int = 5
-    estimated_impact: str = "low"
-
-
-@dataclass
-class HealingResult:
-    """Result of a healing action."""
-    success: bool = True
-    action_taken: str = ""
-    component: str = ""
-    details: str = ""
-
-
 class SelfHealingEngine:
     """
-    Unified SelfHealing that combines old patterns with new bridge.
-    
-    Old features: 14+ healing patterns, independent engine
-    New features: MetaCognition integration, NeuralBus events, ImprovementProposer bridge
+    Backward-compatible SelfHealingEngine that delegates to SelfHealingBridge.
+
+    Old API: diagnose(component, error) → list[HealingAction]
+    Old API: heal(component, issue, severity) → HealingResult
+    New API: heal_component(component, issue, severity) → HealingResult (super_brain)
+
+    This adapter translates between the two.
     """
 
     def __init__(self, llm_client=None, meta_cognition=None, neural_bus=None):
-        self.llm = llm_client
-        self._meta_cognition = meta_cognition
-        self._neural_bus = neural_bus
+        self._bridge = SelfHealingBridge(
+            meta_cognition=meta_cognition,
+            neural_bus=neural_bus,
+        )
         self._healing_history: list[dict] = []
-        self._new_bridge = None
-
-        if _NEW_AVAILABLE and meta_cognition:
-            try:
-                self._new_bridge = _NewBridge(
-                    meta_cognition=meta_cognition,
-                    neural_bus=neural_bus,
-                )
-                logger.info("SelfHealing: super_brain bridge integrated")
-            except Exception as e:
-                logger.debug(f"Could not init new bridge: {e}")
 
     def diagnose(self, component: str, error: str = "") -> list[HealingAction]:
-        """Diagnose an issue and propose healing actions."""
-        actions = []
-        
-        # Pattern-based diagnosis (from old engine)
+        """Diagnose an issue — delegates to SelfHealingBridge."""
+        # Map old error patterns to new HealingAction values
         if "timeout" in error.lower():
-            actions.append(HealingAction(
-                action_type=HealingActionType.RETRY_WITH_BACKOFF,
-                target=component,
-                description=f"إعادة المحاولة مع تأخير تصاعدي لـ {component}",
-            ))
-            actions.append(HealingAction(
-                action_type=HealingActionType.SWITCH_PROVIDER,
-                target=component,
-                description="التبديل إلى مزود بديل",
-            ))
+            return [
+                HealingAction.RETRY_WITH_BACKOFF,
+                HealingAction.SWITCH_PROVIDER,
+            ]
         elif "memory" in error.lower():
-            actions.append(HealingAction(
-                action_type=HealingActionType.CLEAR_CACHE,
-                target=component,
-                description="مسح ذاكرة التخزين المؤقت",
-            ))
+            return [HealingAction.CLEAR_CACHE]
         elif "connection" in error.lower():
-            actions.append(HealingAction(
-                action_type=HealingActionType.RETRY_WITH_BACKOFF,
-                target=component,
-                description="إعادة محاولة الاتصال",
-            ))
+            return [HealingAction.RETRY_WITH_BACKOFF]
         else:
-            actions.append(HealingAction(
-                action_type=HealingActionType.LOG_AND_CONTINUE,
-                target=component,
-                description=f"تسجيل المشكلة في {component}: {error}",
-            ))
-            actions.append(HealingAction(
-                action_type=HealingActionType.ESCALATE,
-                target=component,
-                description="تصعيد المشكلة",
-            ))
-
-        return actions
+            return [HealingAction.LOG_AND_CONTINUE, HealingAction.ESCALATE]
 
     async def heal(self, component: str, issue: str = "", severity: str = "medium") -> HealingResult:
-        """Perform healing for a component."""
-        actions = self.diagnose(component, issue)
-        
-        # Try new bridge first
-        if self._new_bridge:
-            try:
-                result = await self._new_bridge.heal_component(component, issue, severity)
-                self._healing_history.append({
-                    "component": component,
-                    "issue": issue,
-                    "healer": "new_bridge",
-                    "success": True,
-                    "timestamp": time.time(),
-                })
-                return HealingResult(
-                    success=True,
-                    action_taken="self_healing_bridge",
-                    component=component,
-                    details=str(result.status.value) if hasattr(result, 'status') else "healed",
-                )
-            except Exception as e:
-                logger.warning(f"New bridge failed, falling back: {e}")
-
-        # Fallback to old pattern-based healing
-        if actions:
-            action = actions[0]
-            self._healing_history.append({
-                "component": component,
-                "issue": issue,
-                "healer": "legacy_patterns",
-                "action": action.action_type.value,
-                "timestamp": time.time(),
-            })
-            return HealingResult(
-                success=True,
-                action_taken=action.action_type.value,
-                component=component,
-                details=action.description,
-            )
-
-        return HealingResult(success=False, component=component, details="لا توجد إجراءات شفاء متاحة")
+        """Perform healing — delegates to SelfHealingBridge."""
+        result = await self._bridge.heal_component(component, issue, severity)
+        self._healing_history.append({
+            "component": component,
+            "issue": issue,
+            "success": result.status == HealingResultStatus.SUCCESS,
+            "timestamp": result.timestamp if hasattr(result, 'timestamp') else 0.0,
+        })
+        return result
 
     def get_healing_history(self, limit: int = 50) -> list[dict]:
         """Get healing history."""
@@ -179,9 +97,10 @@ class SelfHealingEngine:
 
     def get_stats(self) -> dict:
         """Get healing statistics."""
+        bridge_stats = self._bridge.get_stats() if hasattr(self._bridge, 'get_stats') else {}
         return {
             "total_healings": len(self._healing_history),
-            "new_bridge_available": self._new_bridge is not None,
+            "bridge_stats": bridge_stats,
         }
 
 
@@ -192,8 +111,13 @@ def get_self_healing(llm_client=None, meta_cognition=None, neural_bus=None) -> S
     """Get the singleton self healing instance."""
     global _self_healing
     if _self_healing is None:
-        _self_healing = SelfHealingEngine(llm_client=llm_client, meta_cognition=meta_cognition, neural_bus=neural_bus)
+        _self_healing = SelfHealingEngine(
+            llm_client=llm_client,
+            meta_cognition=meta_cognition,
+            neural_bus=neural_bus,
+        )
     return _self_healing
+
 
 # Module-level instance for backward compatibility
 # (old code does: from mamoun.core.self_healing import self_healing)
@@ -204,3 +128,5 @@ class _SelfHealingModuleProxy:
         return getattr(healing, name)
 
 self_healing = _SelfHealingModuleProxy()
+
+logger.info("self_healing → redirected to super_brain/self_healing_bridge")

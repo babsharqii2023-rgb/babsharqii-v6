@@ -118,19 +118,9 @@ def _get_procedural_memory():
 
 @lru_cache(maxsize=1)
 def _get_evolution_loop():
-    from mamoun.evolution.evolution_loop import EvolutionLoop
-    return EvolutionLoop(
-        state_reader=_get_state_reader(),
-        meta_analyzer=_get_meta_analyzer(),
-        journal=_get_journal(),
-        code_patcher=_get_code_patcher(),
-        sandbox_runner=_get_sandbox_runner(),
-        safety_guard=_get_safety_guard(),
-        approval_gate=_get_approval_gate(),
-        mutation_engine=_get_mutation_engine(),
-        fitness_evaluator=_get_fitness_evaluator(),
-        procedural_memory=_get_procedural_memory(),
-    )
+    # v61: Use canonical super_brain EvolutionLoopV2 instead of old evolution_loop
+    from mamoun.core.super_brain.evolution_loop_v2 import EvolutionLoopV2
+    return EvolutionLoopV2(kernel=None)
 
 
 # Module-level references — use lazy getters for backward compatibility

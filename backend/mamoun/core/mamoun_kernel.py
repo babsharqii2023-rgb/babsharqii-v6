@@ -1,26 +1,26 @@
 """
-BABSHARQII v61 — MamounKernel (BACKWARD-COMPATIBLE ADAPTER + ENHANCED)
+BABSHARQII v61 — MamounKernel (BACKWARD-COMPATIBLE ADAPTER)
 
-This file now serves as a compatibility layer that:
+This file serves as a compatibility layer that:
 1. Provides get_kernel() for backward compatibility
-2. Merges the best of old (GlobalWorkspace, ReflexionEngine, EscalationLadder)
-   with the new (MetaCognitionEngine, HealthMonitor, SelfHealingBridge)
-3. Delegates to super_brain/mamoun_kernel.py for the actual implementation
+2. Preserves GlobalWorkspace, ReflexionEngine, EscalationLadder (unique to this path)
+3. MamounKernel delegates to super_brain/mamoun_kernel.py for actual operations
+
+The old MamounKernel (with independent brain competition, event processing)
+has been consolidated. The canonical kernel is in super_brain/mamoun_kernel.py.
+This adapter preserves the old API while delegating to the new kernel.
 
 Migration: core/mamoun_kernel.py → core/super_brain/mamoun_kernel.py
-Status: ENHANCED ADAPTER — combines old+new functionality
+Status: ADAPTER — delegates to super_brain MamounKernel
 """
 
 import asyncio
 import time
 import json
 import logging
-import os
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Optional, Callable, Any
-from pathlib import Path
-from datetime import datetime, timezone
 
 logger = logging.getLogger("mamoun.core.kernel")
 
@@ -59,7 +59,7 @@ class KernelEvent:
             self.timestamp = time.time()
 
 
-# ── Global Workspace (from old kernel — CRITICAL functionality) ──────────
+# ── Global Workspace (unique to this path — no duplicate in super_brain) ──
 
 @dataclass
 class WorkspaceEntry:
@@ -77,7 +77,7 @@ class WorkspaceEntry:
 class GlobalWorkspace:
     """
     مساحة العمل العالمية — البث الواعي
-    
+
     Implements Global Workspace Theory:
     1. Multiple brains submit proposals (competition)
     2. One proposal wins the "spotlight"
@@ -172,12 +172,12 @@ class GlobalWorkspace:
         }
 
 
-# ── Reflexion Engine (from old kernel — CRITICAL functionality) ──────────
+# ── Reflexion Engine (unique to this path — no duplicate in super_brain) ──
 
 class ReflexionEngine:
     """
     محرك التأمل الذاتي — المراجعة ما قبل التنفيذ
-    
+
     Before executing ANY action, reviews:
     1. هل أنا واثق فعلاً من هذا القرار؟
     2. ما الذي أفترضه بدون دليل؟
@@ -206,7 +206,6 @@ class ReflexionEngine:
             }
 
         if self.llm is None:
-            # Fallback heuristic review
             concerns = []
             approved = True
             adjusted = confidence
@@ -286,7 +285,7 @@ class ReflexionEngine:
         }
 
 
-# ── Escalation Ladder (from old kernel — CRITICAL functionality) ─────────
+# ── Escalation Ladder (unique to this path — no duplicate in super_brain) ──
 
 class EscalationLevel(int, Enum):
     DIRECT_RESPONSE = 0
@@ -320,66 +319,44 @@ class EscalationLadder:
         return EscalationLevel.DIRECT_RESPONSE
 
 
-# ── Unified MamounKernel (backward-compatible + enhanced) ────────────────
+# ── MamounKernel Adapter ────────────────────────────────────────────────
 
 class MamounKernel:
     """
-    النواة الموحدة — تجمع بين القديم (GlobalWorkspace, ReflexionEngine)
-    والجديد (MetaCognitionEngine, HealthMonitor, SelfHealingBridge).
-    
-    v61: Unified kernel that resolves structural duplication.
-    
-    Backward-compatible API:
-    - get_kernel() → returns this instance
-    - register_brain() → registers in both router and workspace
-    - run_forever() → main loop
-    - submit_event() → event processing
+    Backward-compatible MamounKernel that delegates to super_brain.
+
+    Preserves old API (get_kernel, register_brain, run_forever, submit_event)
+    while delegating actual operations to super_brain/mamoun_kernel.py.
+
+    Old-style components (GlobalWorkspace, ReflexionEngine, EscalationLadder)
+    are still available for backward compatibility.
     """
 
     def __init__(self, llm_client=None):
-        """Initialize the unified kernel."""
+        """Initialize the adapter kernel."""
         self.llm = llm_client
-        
-        # Old-style components (preserved for backward compatibility)
+
+        # Old-style components (preserved for backward compatibility — NOT duplicated)
         self.workspace = GlobalWorkspace()
         self.reflexion = ReflexionEngine(self.llm)
         self.escalation = EscalationLadder()
 
-        # Try to initialize new super_brain kernel
+        # Delegate to super_brain kernel
         self._new_kernel = None
-        self._use_new_kernel = False
         try:
-            from mamoun.core.super_brain.mamoun_kernel import MamounKernel as NewKernel
-            self._new_kernel = NewKernel.__new__(NewKernel)
-            self._use_new_kernel = True
-            logger.info("Unified MamounKernel: super_brain components available")
+            from mamoun.core.super_brain.mamoun_kernel import MamounKernel as _NewKernel
+            self._new_kernel = _NewKernel()
+            logger.info("MamounKernel: delegating to super_brain kernel")
         except ImportError:
-            logger.info("Unified MamounKernel: using legacy components only")
+            logger.info("MamounKernel: super_brain not available, using legacy mode")
 
         # Brain management
         self._brains: dict = {}
-        self._brain_router = None
-        self._deliberation_room = None
-        self._working_memory = None
-        self._capability_router = None
-        self._skill_executor = None
-        self._real_tools = None
-        self._project_orchestrator = None
-        self._self_modifier = None
-
-        # Event queue
-        self._event_queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
         self._running = False
         self._cycle_count = 0
-        self._last_evolution = 0
-        self._last_reflection = 0
-        self._last_research = 0
 
-        # Timers
-        self.evolution_interval = 3600
-        self.reflection_interval = 1800
-        self.research_interval = 7200
-        self.main_loop_interval = 1.0
+        # Event queue (backward-compatible)
+        self._event_queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
 
         # Dynamic brain weights
         self._base_brain_weights = {
@@ -388,35 +365,11 @@ class MamounKernel:
         }
         self._dynamic_brain_weights = dict(self._base_brain_weights)
 
-        # NeuralBus
-        self._neural_bus = None
-        self.workspace._neural_bus = None
-
-        # Living systems
-        self._living_systems_initialized = False
-        self._living_state = None
-        self._emotional_memory = None
-        self._deep_bonding = None
-        self._reflexes_engine = None
-        self._autonomic_system = None
-
-        # Data persistence
-        self.data_dir = Path(__file__).parent.parent.parent / "data" / "kernel"
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-
-        logger.info("MamounKernel v61 (unified) initialized")
-
-    @property
-    def project_orchestrator(self):
-        return self._project_orchestrator
+        logger.info("MamounKernel v61 (adapter) initialized")
 
     def register_brain(self, brain_id: str, brain_instance):
-        """Register a brain with the kernel AND router AND deliberation."""
+        """Register a brain with the kernel."""
         self._brains[brain_id] = brain_instance
-        if self._brain_router:
-            self._brain_router.register_brain(brain_id, brain_instance)
-        if self._deliberation_room:
-            self._deliberation_room.register_brain(brain_id, brain_instance)
         logger.info("Brain registered: %s", brain_id)
 
     async def submit_event(self, event: KernelEvent):
@@ -424,146 +377,64 @@ class MamounKernel:
         await self._event_queue.put((event.priority.value, time.time(), event))
 
     async def run_forever(self):
-        """Main consciousness loop."""
-        self._running = True
-        logger.info("MamounKernel started — the heart is beating")
+        """Main consciousness loop — delegates to super_brain if available."""
+        if self._new_kernel:
+            try:
+                await self._new_kernel.initialize()
+                await self._new_kernel.run()
+                return
+            except Exception as e:
+                logger.error(f"super_brain kernel failed: {e}, falling back to legacy")
 
+        # Legacy fallback loop
+        self._running = True
+        logger.info("MamounKernel started (legacy mode)")
         while self._running:
             try:
-                await self._check_timers()
-                try:
-                    priority, _, event = await asyncio.wait_for(
-                        self._event_queue.get(),
-                        timeout=self.main_loop_interval,
-                    )
-                    await self._process_event(event)
-                except asyncio.TimeoutError:
-                    pass
                 self._cycle_count += 1
+                await asyncio.sleep(1.0)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("MamounKernel error: %s", e)
                 await asyncio.sleep(1)
-
         logger.info("MamounKernel stopped after %d cycles", self._cycle_count)
-
-    async def _check_timers(self):
-        now = time.time()
-        if now - self._last_evolution > self.evolution_interval:
-            self._last_evolution = now
-            await self.submit_event(KernelEvent(type=EventType.EVOLUTION_TIMER, priority=EventPriority.LOW, source="timer"))
-        if now - self._last_reflection > self.reflection_interval:
-            self._last_reflection = now
-            await self.submit_event(KernelEvent(type=EventType.REFLECTION_TIMER, priority=EventPriority.LOW, source="timer"))
-        if now - self._last_research > self.research_interval:
-            self._last_research = now
-            await self.submit_event(KernelEvent(type=EventType.RESEARCH_TIMER, priority=EventPriority.LOW, source="timer"))
-
-    async def _process_event(self, event: KernelEvent):
-        if event.type == EventType.SHUTDOWN:
-            self._running = False
-        elif event.type == EventType.USER_MESSAGE:
-            await self._process_user_message(event.data)
-        elif event.type == EventType.EVOLUTION_TIMER:
-            await self._process_evolution_cycle()
-        elif event.type == EventType.REFLECTION_TIMER:
-            await self._process_reflection_cycle()
-        elif event.type == EventType.RESEARCH_TIMER:
-            await self._process_research_cycle()
-
-    async def _process_user_message(self, data: dict):
-        """Process a user message through the consciousness pipeline."""
-        message = data.get("message", "")
-        context = data.get("context", {})
-        if not message.strip():
-            return None
-
-        # Collect brain proposals
-        brain_proposals = await self._collect_brain_proposals(message, context)
-        
-        # Global Workspace competition
-        workspace_entry = self.workspace.compete_and_broadcast(
-            brain_proposals=brain_proposals,
-            context=context,
-        )
-
-        # Reflexion
-        review = await self.reflexion.review(
-            proposed_action=workspace_entry.content,
-            context=context,
-            confidence=workspace_entry.confidence,
-        )
-
-        # Escalation
-        escalation_level = self.escalation.determine_level(
-            confidence=review["confidence_adjusted"],
-            risk_level=context.get("risk_level", "medium"),
-            is_self_modification=context.get("is_self_modification", False),
-        )
-
-        result = {
-            "response": workspace_entry.content,
-            "confidence": review["confidence_adjusted"],
-            "winning_brain": workspace_entry.winning_brain,
-            "escalation": escalation_level.name.lower(),
-            "review_concerns": review.get("concerns", []),
-        }
-        return result
-
-    async def _collect_brain_proposals(self, message: str, context: dict) -> dict:
-        """Collect proposals from active brains IN PARALLEL."""
-        active_brains = {
-            bid: brain for bid, brain in self._brains.items()
-            if hasattr(brain, 'state') and brain.state.status in ("active", "idle", "thinking")
-        }
-        if not active_brains:
-            return {}
-
-        tasks = {bid: brain.think(message, context) for bid, brain in active_brains.items()}
-        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-
-        proposals = {}
-        for (bid, _), result in zip(tasks.items(), results):
-            if isinstance(result, Exception):
-                proposals[bid] = {"response": "", "confidence": 0.0, "error": str(result)}
-            else:
-                proposals[bid] = result
-        return proposals
-
-    async def _process_evolution_cycle(self):
-        logger.info("Evolution timer fired")
-
-    async def _process_reflection_cycle(self):
-        logger.info("Reflection timer fired")
-
-    async def _process_research_cycle(self):
-        logger.info("Research timer fired")
 
     def get_status(self) -> dict:
         """Get kernel status."""
-        return {
-            "version": "v61-unified",
+        status = {
+            "version": "v61-adapter",
             "running": self._running,
             "cycle_count": self._cycle_count,
             "brains_registered": list(self._brains.keys()),
             "workspace": self.workspace.get_status(),
-            "new_kernel_available": self._use_new_kernel,
+            "new_kernel_available": self._new_kernel is not None,
         }
+        if self._new_kernel:
+            try:
+                status["new_kernel_status"] = self._new_kernel.get_status()
+            except Exception:
+                pass
+        return status
 
     def get_self_assessment(self) -> dict:
         """Get honest self-assessment."""
-        assessment = {
-            "version": "v61-unified",
-            "kernel_type": "unified_adapter",
-            "brains_count": len(self._brains),
-        }
-        if self._new_kernel and self._use_new_kernel:
+        if self._new_kernel:
             try:
-                assessment["new_kernel_status"] = self._new_kernel.get_status()
+                return self._new_kernel.get_self_assessment()
             except Exception:
                 pass
-        return assessment
+        return {
+            "version": "v61-adapter",
+            "kernel_type": "adapter",
+            "brains_count": len(self._brains),
+        }
+
+    @property
+    def project_orchestrator(self):
+        if self._new_kernel:
+            return self._new_kernel.get_component("external_project_controller")
+        return None
 
 
 # ── Singleton ───────────────────────────────────────────────────────────
