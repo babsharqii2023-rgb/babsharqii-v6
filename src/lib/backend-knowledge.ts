@@ -1,14 +1,16 @@
 /**
- * Backend Capabilities Knowledge Layer v59
+ * Backend Capabilities Knowledge Layer v59.2
  * 
- * CRITICAL ADDITION from v59:
- * - v58: Frontend was a blind proxy — no knowledge of backend structure
- * - v59: Frontend now knows what backend can do, which endpoints exist,
- *   and how to route requests intelligently
- * - Smart proxy with caching and fallback
- * - Structural knowledge of backend API routes
+ * CRITICAL ADDITION from v59.2:
+ * - v59: Frontend knows backend structure with caching and fallback
+ * - v59.2: Added Super Brain specific endpoints (evolution/v2, deliberation, etc.)
+ * - v59.2: Added agent lifecycle endpoints
+ * - v59.2: Added notification engine endpoints
+ * - v59.2: Added variant archive endpoints
+ * - v59.2: Added self-healing bridge and RLHF bridge endpoints
+ * - v59.2: Version bumped to v59.2 with local fallback cache
  * 
- * v59 — Super Mind العقل الخارق مامون
+ * v59.2 — Super Mind العقل الخارق مامون
  */
 
 // Backend API capabilities map
@@ -146,6 +148,61 @@ export const BACKEND_CAPABILITIES = {
     description: 'Safety system',
     laws: '/api/safety/laws',
   },
+  // v59.2: Super Brain specific endpoints
+  superBrain: {
+    route: '/api/mamoun',
+    methods: ['GET', 'POST'],
+    description: 'Super Brain kernel status and control',
+    status: '/api/kernel/status',
+  },
+  agentLifecycle: {
+    route: '/api/mamoun/agents',
+    methods: ['GET', 'POST'],
+    description: 'Agent lifecycle management (AgentFactory-inspired)',
+    register: '/api/mamoun/agents/register',
+    health: '/api/mamoun/agents/health',
+    retire: '/api/mamoun/agents/retire',
+  },
+  notifications: {
+    route: '/api/mamoun/notifications',
+    methods: ['GET'],
+    description: 'Notification engine (NeuralBus-driven)',
+    unread: '/api/mamoun/notifications/unread',
+    acknowledge: '/api/mamoun/notifications/acknowledge',
+  },
+  variantArchive: {
+    route: '/api/mamoun/variants',
+    methods: ['GET', 'POST'],
+    description: 'Variant archive (DGM-inspired code versioning)',
+    history: '/api/mamoun/variants/history',
+    rollback: '/api/mamoun/variants/rollback',
+    best: '/api/mamoun/variants/best',
+  },
+  selfHealingBridge: {
+    route: '/api/mamoun/healing',
+    methods: ['GET', 'POST'],
+    description: 'Self-healing bridge (MetaCognition-connected)',
+    heal: '/api/mamoun/healing/heal',
+    stats: '/api/mamoun/healing/stats',
+  },
+  rlhfBridge: {
+    route: '/api/mamoun/rlhf',
+    methods: ['GET', 'POST'],
+    description: 'RLHF bridge (feedback → improvement)',
+    feedback: '/api/mamoun/rlhf/feedback',
+    patterns: '/api/mamoun/rlhf/patterns',
+    summary: '/api/mamoun/rlhf/summary',
+  },
+  dgm: {
+    route: '/api/dgm',
+    methods: ['GET', 'POST'],
+    description: 'Darwin-Godel Machine evolution tracking',
+  },
+  healthMonitor: {
+    route: '/api/health-monitor',
+    methods: ['GET', 'POST'],
+    description: 'Comprehensive health monitoring',
+  },
 } as const;
 
 // Cache for backend responses
@@ -244,7 +301,7 @@ export async function smartProxy(
 function createFallbackResponse(apiPath: string): Response {
   const fallbackData: Record<string, any> = {
     '/api/health': { status: 'degraded', backend: 'unavailable', mode: 'fallback' },
-    '/api/kernel/status': { version: 'v59', state: 'fallback', backend_connected: false },
+    '/api/kernel/status': { version: 'v59.2', state: 'fallback', backend_connected: false },
     '/api/brains': { brains: [], message: 'Backend unavailable — using fallback' },
     '/api/consciousness/state': { state: 'dormant', backend_connected: false },
     '/api/awareness/vitality': { vitality: 0, backend_connected: false },

@@ -1,17 +1,16 @@
 """
-Mamoun Kernel v59 — Consciousness loop with full self-improvement pipeline.
+Mamoun Kernel v59.1 — Consciousness loop with full self-improvement pipeline.
 
-CRITICAL UPGRADE from v58:
-- v58: Proposer→Modifier not wired, no Evolution Loop integration
-- v59: Proposer↔SelfModifier bidirectional wiring confirmed
-- Added EvolutionLoopV2 with safety limits and rollback
-- Added ResearchToUpdatePipeline (DeepResearch→SelfUpdate)
-- Added AgentLifecycleManager (observation→active→retired)
-- Added OutcomeRecorder decorator for consistent measurement
-- Self-improvement cycle now uses EvolutionLoopV2
-- Better stagnation handling with actual proposal application
+CRITICAL UPGRADE from v59:
+- v59: Proposer↔SelfModifier wiring confirmed, EvolutionLoopV2 added
+- v59.1: SelfHealingBridge connects SelfHealing ↔ MetaCognition
+- v59.1: RLHFBridge connects ExperientialRLHF ↔ ImprovementProposer
+- v59.1: OutcomeRecorder decorator applied to all 17+ components
+- v59.1: Kernel upgrade path — version consistency fixed
+- Better healing with simulation steps before execution
+- RLHF patterns (rejection spiral, correction loop) → auto-proposals
 
-v59 — Super Mind العقل الخارق مامون
+v59.1 — Super Mind العقل الخارق مامون
 """
 
 import os
@@ -93,7 +92,7 @@ class MamounKernel:
 
     async def initialize(self) -> None:
         """Initialize all components with proper wiring."""
-        logger.info("Initializing Mamoun Kernel v58...")
+        logger.info("Initializing Mamoun Kernel v59.1...")
 
         # 1. Neural Bus
         try:
@@ -245,6 +244,27 @@ class MamounKernel:
         )
         self._register_component("agent_lifecycle_manager", agent_lifecycle)
 
+        # 18. SelfHealingBridge — connects SelfHealing ↔ MetaCognition (v59.1)
+        from .self_healing_bridge import SelfHealingBridge
+        healing_bridge = SelfHealingBridge(
+            meta_cognition=self._meta_cognition,
+            neural_bus=self._neural_bus,
+            kernel=self,
+        )
+        self._register_component("self_healing_bridge", healing_bridge)
+
+        # 19. RLHFBridge — connects RLHF ↔ ImprovementProposer (v59.1)
+        from .rlhf_bridge import RLHFBridge
+        rlhf_bridge = RLHFBridge(
+            meta_cognition=self._meta_cognition,
+            neural_bus=self._neural_bus,
+            improvement_proposer=improvement_proposer,
+        )
+        self._register_component("rlhf_bridge", rlhf_bridge)
+
+        # v59.1: Wire SelfHealingBridge to handle health events
+        healing_bridge.set_self_healing_engine(self.get_component("self_modifier"))
+
         # Subscribe to NeuralBus events
         if self._neural_bus:
             try:
@@ -253,10 +273,13 @@ class MamounKernel:
                 from shared.neural_bus import EventType
             self._neural_bus.subscribe(EventType.META_STAGNATION.value, self._handle_stagnation)
             self._neural_bus.subscribe(EventType.HEALTHING_CHECK.value if hasattr(EventType, 'HEALTHING_CHECK') else "healing.check", self._handle_healing)
+            # v59.1: Subscribe to health critical events
+            if hasattr(EventType, 'HEALTH_CRITICAL'):
+                self._neural_bus.subscribe(EventType.HEALTH_CRITICAL.value, self._handle_health_critical)
 
         self._state = KernelState.RUNNING
         self._start_time = time.time()
-        logger.info(f"Mamoun Kernel v58 initialized with {len(self._components)} components")
+        logger.info(f"Mamoun Kernel v59.1 initialized with {len(self._components)} components")
 
     def _register_component(self, name: str, instance: Any) -> None:
         self._components[name] = ComponentHandle(
@@ -285,8 +308,35 @@ class MamounKernel:
                     logger.error(f"Stagnation auto-fix failed: {e}")
 
     async def _handle_healing(self, event) -> None:
-        """Handle healing events."""
+        """Handle healing events — now connected to SelfHealingBridge."""
         logger.info(f"Healing event: {event.data}")
+        # v59.1: Use SelfHealingBridge for actual healing
+        healing_bridge = self.get_component("self_healing_bridge")
+        if healing_bridge and hasattr(event, 'data') and event.data:
+            component = event.data.get("component", "")
+            issue = event.data.get("issue", "unknown")
+            severity = event.data.get("severity", "medium")
+            if component:
+                try:
+                    result = await healing_bridge.heal_component(component, issue, severity)
+                    logger.info(f"Healing result for {component}: {result.status.value}")
+                except Exception as e:
+                    logger.error(f"SelfHealingBridge failed: {e}")
+
+    async def _handle_health_critical(self, event) -> None:
+        """Handle critical health events — v59.1."""
+        logger.critical(f"HEALTH CRITICAL: {event.data}")
+        healing_bridge = self.get_component("self_healing_bridge")
+        if healing_bridge and hasattr(event, 'data') and event.data:
+            component = event.data.get("component", "")
+            if component:
+                try:
+                    result = await healing_bridge.heal_component(
+                        component, "critical health issue", "critical"
+                    )
+                    logger.info(f"Emergency healing result for {component}: {result.status.value}")
+                except Exception as e:
+                    logger.error(f"Emergency healing failed: {e}")
 
     # ── Self-Assessment ──────────────────────────────────────────────────
     async def _run_self_assessment(self) -> None:
