@@ -41,6 +41,32 @@ router = APIRouter(prefix="/update", tags=["update"])
 #  Global Update State
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
+# ═══ Module-level utility functions ═══
+
+def get_db_connection():
+    """الحصول على اتصال قاعدة البيانات الموحدة"""
+    try:
+        from mamoun.core.unified_db import get_unified_db
+        return get_unified_db()
+    except Exception:
+        return None
+
+
+def get_brain_provider():
+    """الحصول على مزود الأدمغة"""
+    try:
+        from mamoun.brains.brain_router import get_brain_router
+        return get_brain_router()
+    except Exception:
+        return None
+
+
+# Module-level state variables
+_last_update_time: float = 0.0
+_auto_update_enabled: bool = True
+
+
 class UpdateState:
     """Track ongoing update operations."""
     is_updating: bool = False

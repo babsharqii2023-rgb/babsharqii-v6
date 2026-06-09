@@ -63,7 +63,7 @@ class TestMultiProviderLLMZaiBridge(unittest.TestCase):
             self.assertFalse(response.success)  # No API key, should fail gracefully
             self.assertIn("error", response.__dict__)
 
-        asyncio.get_event_loop().run_until_complete(_test())
+        asyncio.run(_test())
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -108,7 +108,7 @@ class TestZaiSdkWrapperAsync(unittest.TestCase):
             self.assertIsInstance(result, dict)
             self.assertIn("success", result)
 
-        asyncio.get_event_loop().run_until_complete(_test())
+        asyncio.run(_test())
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -163,7 +163,7 @@ class TestExternalProjectRealQualityScore(unittest.TestCase):
             self.assertIsNotNone(profile)
             self.assertGreater(profile.quality_average, 0.0)
 
-        asyncio.get_event_loop().run_until_complete(_test())
+        asyncio.run(_test())
 
     def test_empty_project_has_low_quality(self):
         """Empty project without git should have low quality score."""
@@ -195,7 +195,7 @@ class TestExternalProjectRealQualityScore(unittest.TestCase):
             # Without git/tests/CI, quality should be low
             self.assertLess(profile.quality_average, 0.3)
 
-        asyncio.get_event_loop().run_until_complete(_test())
+        asyncio.run(_test())
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -490,7 +490,7 @@ class TestNeuralBusIntegration(unittest.TestCase):
                 data={"async": True},
             ))
 
-        asyncio.get_event_loop().run_until_complete(_test())
+        asyncio.run(_test())
         self.assertEqual(len(received), 1)
 
     def test_event_log(self):

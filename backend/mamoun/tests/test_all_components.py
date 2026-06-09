@@ -503,7 +503,7 @@ class TestExternalProjectController(unittest.TestCase):
         # Create a temp project for analysis
         temp_dir = tempfile.mkdtemp()
         controller = ExternalProjectController(project_path=temp_dir)
-        asyncio.get_event_loop().run_until_complete(controller.analyze_project())
+        asyncio.run(controller.analyze_project())
         health = controller.get_project_health()
         self.assertIn("score", health)
 

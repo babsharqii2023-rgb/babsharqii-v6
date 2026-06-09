@@ -261,7 +261,7 @@ class TestSelfHealingBridge(unittest.TestCase):
         mock_component.initialize = MagicMock()
         self.kernel.get_component = MagicMock(return_value=mock_component)
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.bridge.heal_component(
                 component_name="test_component",
                 issue_description="connection timeout",
@@ -273,7 +273,7 @@ class TestSelfHealingBridge(unittest.TestCase):
 
     def test_heal_component_records_outcome(self):
         """اختبار أن الشفاء يسجل النتيجة في MetaCognition"""
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             self.bridge.heal_component(
                 component_name="tracked_component",
                 issue_description="cache overflow",
@@ -327,7 +327,7 @@ class TestSelfHealingBridge(unittest.TestCase):
         """اختبار أن الفشل المتتالي يمنع المحاكاة"""
         # Simulate 3 consecutive failures
         self.bridge._consecutive_failures["blocked_component"] = 3
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.bridge.heal_component(
                 component_name="blocked_component",
                 issue_description="repeated failure",
@@ -365,7 +365,7 @@ class TestRLHFBridge(unittest.TestCase):
 
     def test_record_positive_feedback(self):
         """اختبار تسجيل ملاحظة إيجابية"""
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.bridge.record_feedback(
                 component="brain_router",
                 operation="route",
@@ -379,7 +379,7 @@ class TestRLHFBridge(unittest.TestCase):
         """اختبار كشف نمط الرفض المتكرر"""
         # Record 3 consecutive rejections
         for i in range(3):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 self.bridge.record_feedback(
                     component="failing_component",
                     operation="generate",
@@ -395,7 +395,7 @@ class TestRLHFBridge(unittest.TestCase):
     def test_correction_loop_pattern(self):
         """اختبار كشف نمط التصحيح المتكرر"""
         for i in range(3):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 self.bridge.record_feedback(
                     component="correction_component",
                     operation="generate",
@@ -410,7 +410,7 @@ class TestRLHFBridge(unittest.TestCase):
     def test_reject_then_accept_pattern(self):
         """اختبار كشف نمط رفض ← قبول ← رفض"""
         # First: rejection
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             self.bridge.record_feedback(
                 component="inconsistent_component",
                 operation="generate",
@@ -419,7 +419,7 @@ class TestRLHFBridge(unittest.TestCase):
             )
         )
         # Second: positive
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             self.bridge.record_feedback(
                 component="inconsistent_component",
                 operation="generate",
@@ -428,7 +428,7 @@ class TestRLHFBridge(unittest.TestCase):
             )
         )
         # Third: rejection again — should trigger REJECT_THEN_ACCEPT
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.bridge.record_feedback(
                 component="inconsistent_component",
                 operation="generate",
@@ -443,7 +443,7 @@ class TestRLHFBridge(unittest.TestCase):
         """اختبار كشف نمط الجودة المتناقصة"""
         scores = [0.9, 0.8, 0.7, 0.5, 0.3]
         for score in scores:
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 self.bridge.record_feedback(
                     component="declining_component",
                     operation="generate",
@@ -456,7 +456,7 @@ class TestRLHFBridge(unittest.TestCase):
 
     def test_feedback_summary(self):
         """اختبار ملخص الملاحظات"""
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             self.bridge.record_feedback(
                 component="comp1",
                 operation="op1",
@@ -464,7 +464,7 @@ class TestRLHFBridge(unittest.TestCase):
                 score=0.8,
             )
         )
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             self.bridge.record_feedback(
                 component="comp2",
                 operation="op2",
@@ -513,7 +513,7 @@ class TestOutcomeRecorder(unittest.TestCase):
             profile = self.meta.get_profile("test_component")
             self.assertIsNotNone(profile)
             self.assertEqual(profile.success_count, 1)
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
 
     def test_context_manager_failure(self):
         """اختبار مدير السياق — فشل"""
@@ -529,7 +529,7 @@ class TestOutcomeRecorder(unittest.TestCase):
             profile = self.meta.get_profile("failing_component")
             self.assertIsNotNone(profile)
             self.assertEqual(profile.failure_count, 1)
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
 
     def test_decorator(self):
         """اختبار الديكوريتور"""
@@ -544,7 +544,7 @@ class TestOutcomeRecorder(unittest.TestCase):
                 return MagicMock(confidence=0.9)
 
         comp = MockComponent(self.meta)
-        asyncio.get_event_loop().run_until_complete(comp.do_work())
+        asyncio.run(comp.do_work())
         profile = self.meta.get_profile("decorated_component")
         self.assertIsNotNone(profile)
         self.assertEqual(profile.success_count, 1)
@@ -694,7 +694,7 @@ class TestNotificationEngine(unittest.TestCase):
 
     def test_send_notification(self):
         """اختبار إرسال تنبيه"""
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.send_notification(
                 level=self.NotificationLevel.INFO,
                 title="Test Notification",
@@ -708,7 +708,7 @@ class TestNotificationEngine(unittest.TestCase):
 
     def test_notification_level_from_string(self):
         """اختبار تحويل مستوى التنبيه من نص"""
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.send_notification(
                 level="critical",
                 title="String Level Test",
@@ -723,7 +723,7 @@ class TestNotificationEngine(unittest.TestCase):
         """اختبار تحديد المعدل"""
         sent_count = 0
         for i in range(15):  # Try to send more than rate limit
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 self.engine.send_notification(
                     level=self.NotificationLevel.INFO,
                     title=f"Rate Test {i}",
@@ -738,7 +738,7 @@ class TestNotificationEngine(unittest.TestCase):
 
     def test_acknowledge_notification(self):
         """اختبار تأكيد قراءة تنبيه"""
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.send_notification(
                 level=self.NotificationLevel.WARNING,
                 title="Ack Test",
@@ -752,7 +752,7 @@ class TestNotificationEngine(unittest.TestCase):
 
     def test_get_unread_notifications(self):
         """اختبار الحصول على التنبيهات غير المقروءة"""
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             self.engine.send_notification(
                 level=self.NotificationLevel.INFO,
                 title="Unread Test",
@@ -765,7 +765,7 @@ class TestNotificationEngine(unittest.TestCase):
 
     def test_notification_stats(self):
         """اختبار إحصائيات التنبيهات"""
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             self.engine.send_notification(
                 level=self.NotificationLevel.CRITICAL,
                 title="Stats Test",
@@ -785,7 +785,7 @@ class TestNotificationEngine(unittest.TestCase):
             self.NotificationLevel.CRITICAL,
             lambda n: received.append(n),
         )
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             self.engine.send_notification(
                 level=self.NotificationLevel.CRITICAL,
                 title="Subscriber Test",
@@ -983,7 +983,7 @@ class TestStage1Stage2Integration(unittest.TestCase):
         ))
 
         # Try to heal
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.healing_bridge.heal_component(
                 component_name="test_comp",
                 issue_description="cache overflow",
@@ -998,7 +998,7 @@ class TestStage1Stage2Integration(unittest.TestCase):
 
         # Record rejections
         for i in range(3):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 self.rlhf_bridge.record_feedback(
                     component="declining_component",
                     operation="generate",
@@ -1054,7 +1054,7 @@ class TestStage1Stage2Integration(unittest.TestCase):
 
         # 2. RLHF should detect the pattern
         for i in range(3):
-            suggestion = asyncio.get_event_loop().run_until_complete(
+            suggestion = asyncio.run(
                 self.rlhf_bridge.record_feedback(
                     component="pipeline_component",
                     operation="execute",
@@ -1071,7 +1071,7 @@ class TestStage1Stage2Integration(unittest.TestCase):
         )
 
         # 4. Notify about the issue
-        notif = asyncio.get_event_loop().run_until_complete(
+        notif = asyncio.run(
             self.notification_engine.send_notification(
                 level="critical",
                 title="Component Failing",
@@ -1106,7 +1106,7 @@ class TestStage1Stage2Integration(unittest.TestCase):
         self.assertEqual(result.fitness_score, 0.9)
 
         # Notify about rollback
-        notif = asyncio.get_event_loop().run_until_complete(
+        notif = asyncio.run(
             self.notification_engine.send_notification(
                 level="warning",
                 title="Code Rollback",

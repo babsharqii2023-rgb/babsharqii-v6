@@ -1126,6 +1126,9 @@ class FluidReasoner:
             max_depth=max_depth
         )
 
+        # ─── عميل LLM — optional LLM client for enhancement ──────────
+        self._llm_client = None
+
         # ─── إحصائيات — usage statistics ───────────────────────────────
         self._stats = {
             "total_calls": 0,
@@ -1145,6 +1148,10 @@ class FluidReasoner:
             max_depth,
             analogy_threshold,
         )
+
+    def set_llm_client(self, client):
+        """Set an optional LLM client for enhanced reasoning."""
+        self._llm_client = client
 
     # ─── نقطة الدخول الرئيسية — Main Entry Point ─────────────────────
 

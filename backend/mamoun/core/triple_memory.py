@@ -562,8 +562,14 @@ class ChromaDBConnection:
 class SQLiteFallback:
     """Fallback store using SQLite when other databases are unavailable."""
 
-    def __init__(self, db_path: Optional[Path] = None):
-        self.db_path = db_path or DB_PATH
+    def __init__(self, db_path=None):
+        if db_path is None:
+            self.db_path = DB_PATH
+        elif isinstance(db_path, str):
+            # Handle :memory: and string paths
+            self.db_path = db_path
+        else:
+            self.db_path = db_path
         self._ensure_schema()
 
     def _ensure_schema(self):

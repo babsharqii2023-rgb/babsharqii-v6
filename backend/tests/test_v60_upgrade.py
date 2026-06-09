@@ -65,7 +65,7 @@ def web_scraper(url: str) -> dict:
     """Scrape a web page."""
     return {"success": True, "url": url, "content": "sample"}
 '''
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.loader.load_tool("test_scraper", code, "Test scraper")
         )
         assert result["success"] is True
@@ -79,7 +79,7 @@ import os
 def dangerous_tool():
     os.system("echo hacked")
 '''
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.loader.load_tool("dangerous", code)
         )
         assert result["success"] is False
@@ -95,12 +95,12 @@ def calculator(operation: str, a: int = 0, b: int = 0) -> dict:
         return {"success": True, "result": a * b}
     return {"success": False, "error": "Unknown operation"}
 '''
-        load_result = asyncio.get_event_loop().run_until_complete(
+        load_result = asyncio.run(
             self.loader.load_tool("calc", code, "Calculator tool")
         )
         assert load_result["success"] is True
 
-        call_result = asyncio.get_event_loop().run_until_complete(
+        call_result = asyncio.run(
             self.loader.call_tool("calc", operation="add", a=3, b=5)
         )
         assert call_result["success"] is True
@@ -109,13 +109,13 @@ def calculator(operation: str, a: int = 0, b: int = 0) -> dict:
     def test_trust_score_increases_on_success(self):
         """Test that trust score increases with successful calls."""
         code = 'def tool(): return {"ok": True}'
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             self.loader.load_tool("trust_test", code)
         )
 
         initial_trust = self.loader._loaded_tools["trust_test"].trust_score
         for _ in range(5):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 self.loader.call_tool("trust_test")
             )
         final_trust = self.loader._loaded_tools["trust_test"].trust_score
@@ -168,7 +168,7 @@ class TestAutoDeployEngine:
 
     def test_deploy_nonexistent_dir(self):
         """Test that deploying to nonexistent directory fails gracefully."""
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.deploy("/nonexistent/path")
         )
         from mamoun.core.super_brain.auto_deploy_engine import DeployStatus
@@ -194,7 +194,7 @@ class TestSmartApprovalEngine:
 
     def test_new_component_requires_human_approval(self):
         """Test that new components always require human approval."""
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.evaluate("new_component", "code_patch", "low")
         )
         assert result["approved"] is False
@@ -204,7 +204,7 @@ class TestSmartApprovalEngine:
         """Test that trusted components auto-approve low risk changes."""
         # Boost trust to trusted level
         self.engine.boost_trust("trusted_component", 0.5)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.evaluate("trusted_component", "documentation", "low")
         )
         assert result["approved"] is True
@@ -212,7 +212,7 @@ class TestSmartApprovalEngine:
     def test_highly_trusted_auto_approves_medium(self):
         """Test that highly trusted components auto-approve medium risk."""
         self.engine.boost_trust("htrusted_component", 0.8)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.evaluate("htrusted_component", "code_patch", "medium")
         )
         assert result["approved"] is True
@@ -223,14 +223,14 @@ class TestSmartApprovalEngine:
         # This is by design (fully trusted = auto-approve most things)
         # Test with a critical FILE target instead
         self.engine.boost_trust("any_component", 0.95)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.evaluate("any_component", "safety_change", "critical", target="laws.yaml")
         )
         assert result["approved"] is False  # Critical file = always human
 
         # Also test that without full trust, critical requires human
         self.engine.boost_trust("semi_trusted", 0.5)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.evaluate("semi_trusted", "core_logic", "critical")
         )
         assert result["approved"] is False
@@ -238,7 +238,7 @@ class TestSmartApprovalEngine:
     def test_critical_file_protection(self):
         """Test that critical files are always protected."""
         self.engine.boost_trust("component", 0.8)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.evaluate("component", "code_patch", "medium", target="safety_guard.py")
         )
         assert result["approved"] is False
@@ -246,13 +246,13 @@ class TestSmartApprovalEngine:
     def test_trust_increases_on_success(self):
         """Test that trust increases when recording successful outcomes."""
         self.engine.boost_trust("test_comp", 0.1)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.evaluate("test_comp", "cosmetic", "low")
         )
         approval_id = result["id"]
 
         # Record success
-        outcome = asyncio.get_event_loop().run_until_complete(
+        outcome = asyncio.run(
             self.engine.record_outcome(approval_id, success=True)
         )
         assert outcome["success"] is True
@@ -260,11 +260,11 @@ class TestSmartApprovalEngine:
     def test_trust_decreases_on_failure(self):
         """Test that trust decreases when recording failures."""
         self.engine.boost_trust("failing_comp", 0.5)
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.evaluate("failing_comp", "code_patch", "medium")
         )
         # Record failure
-        outcome = asyncio.get_event_loop().run_until_complete(
+        outcome = asyncio.run(
             self.engine.record_outcome(result["id"], success=False)
         )
         assert outcome["consecutive_failures"] > 0
@@ -283,7 +283,7 @@ class TestSmartApprovalEngine:
             {"component": "batch_comp", "change_type": "cosmetic", "risk_level": "low"},
             {"component": "batch_comp", "change_type": "documentation", "risk_level": "low"},
         ]
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             self.engine.batch_evaluate(changes)
         )
         assert result["approved"] is True
@@ -442,13 +442,13 @@ def text_counter(text: str) -> dict:
     words = text.split()
     return {"success": True, "word_count": len(words), "char_count": len(text)}
 '''
-        load_result = asyncio.get_event_loop().run_until_complete(
+        load_result = asyncio.run(
             loader.load_tool("text_counter", code, "Counts words in text")
         )
         assert load_result["success"] is True
 
         # Call the tool
-        call_result = asyncio.get_event_loop().run_until_complete(
+        call_result = asyncio.run(
             loader.call_tool("text_counter", text="Hello World Test")
         )
         assert call_result["success"] is True
@@ -465,7 +465,7 @@ def text_counter(text: str) -> dict:
         engine = SmartApprovalEngine()
 
         # Start with new component — requires human approval
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.evaluate("evolving_component", "cosmetic", "low")
         )
         assert result["approved"] is False
@@ -473,12 +473,12 @@ def text_counter(text: str) -> dict:
         # Boost trust through successful outcomes
         for i in range(20):
             engine.boost_trust("evolving_component", 0.05)
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 engine.evaluate("evolving_component", "cosmetic", "low")
             )
 
         # Now should be auto-approved
-        final_result = asyncio.get_event_loop().run_until_complete(
+        final_result = asyncio.run(
             engine.evaluate("evolving_component", "cosmetic", "low")
         )
         assert final_result["approved"] is True
